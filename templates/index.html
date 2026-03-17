@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Assistant</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --bg2:      #1a1d27;
+    --bg3:      #252836;
+    --border:   #2d3149;
+    --text:     #e2e8f0;
+    --muted:    #8892a0;
+    --high:     #ef4444;
+    --medium:   #f59e0b;
+    --low:      #3b82f6;
+    --ignore:   #4b5563;
+    --accent:   #6366f1;
+    --green:    #10b981;
+    --red:      #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; }
+
+  /* ── Header ── */
+  header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 52px; position: sticky; top: 0; z-index: 100; }
+  .logo { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+
+  /* ── Buttons ── */
+  button { cursor: pointer; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; padding: 6px 12px; transition: opacity .15s; }
+  button:hover { opacity: .85; }
+  button:disabled { opacity: .35; cursor: default; }
+  .btn-primary   { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger    { background: #7f1d1d; color: #fca5a5; }
+  .btn-green     { background: #064e3b; color: #6ee7b7; }
+  .btn-pipeline  { background: var(--accent); color: #fff; display: flex; align-items: center; gap: 6px; }
+  .btn-sm        { padding: 4px 8px; font-size: 12px; }
+
+  /* ── Tabs ── */
+  nav { background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; padding: 0 20px; position: sticky; top: 52px; z-index: 95; }
+  nav button { background: none; color: var(--muted); border-radius: 0; padding: 12px 16px; border-bottom: 2px solid transparent; font-size: 13px; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  nav button:hover { color: var(--text); opacity: 1; }
+  .badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 11px; margin-left: 4px; }
+
+  /* ── Toolbar ── */
+  .toolbar { padding: 10px 20px; display: flex; align-items: center; gap: 8px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-wrap: wrap; position: fixed; top: 94px; left: 0; right: 0; z-index: 90; }
+  .toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+  .sel-count { color: var(--muted); font-size: 12px; }
+  .filter-group { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .filter-select { background: var(--bg3); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit; cursor: pointer; transition: border-color .15s; }
+  .filter-select:focus { outline: none; border-color: var(--accent); }
+  .filter-select.active { border-color: var(--accent); color: var(--text); }
+
+  /* ── Email list ── */
+  .email-list { padding: 12px 20px; padding-top: 58px; display: flex; flex-direction: column; gap: 6px; }
+  .email-row { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; cursor: pointer; transition: border-color .15s; }
+  .email-row:hover { border-color: var(--accent); }
+  .email-row.selected { border-color: var(--accent); background: #1e2035; }
+  .email-row input[type=checkbox] { margin-top: 2px; flex-shrink: 0; accent-color: var(--accent); }
+  .priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .dot-high   { background: var(--high); }
+  .dot-medium { background: var(--medium); }
+  .dot-low    { background: var(--low); }
+  .dot-ignore { background: var(--ignore); }
+  .email-main { flex: 1; min-width: 0; }
+  .email-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .email-subject { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px; }
+  .email-from { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+  .email-date { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+  .email-summary { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.4; }
+  .email-actions-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .tag { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+  .tag-job    { background: #1a2e1a; color: #86efac; }
+  .tag-reply  { background: #1a1a2e; color: #a5b4fc; }
+  .tag-cat    { background: var(--bg3); color: var(--muted); }
+  .action-item { font-size: 12px; color: var(--muted); margin-top: 3px; padding-left: 12px; border-left: 2px solid var(--border); }
+  .action-item::before { content: "→ "; }
+  .email-expand { display: none; margin-top: 8px; }
+  .email-row.open .email-expand { display: block; }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty .icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* ── Tasks ── */
+  .task-list { padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; }
+  .task-row { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .task-text { flex: 1; }
+  .task-source { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Pending replies ── */
+  .reply-row { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .urgency-today    { color: var(--high); font-size: 11px; font-weight: 600; }
+  .urgency-thisweek { color: var(--medium); font-size: 11px; font-weight: 600; }
+  .urgency-whenever { color: var(--muted); font-size: 11px; }
+
+  /* ── Follow-ups ── */
+  .followup-row { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .followup-subject { font-weight: 500; }
+  .followup-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* ── Tab content ── */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Modal ── */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 200; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 540px; max-width: 95vw; max-height: 85vh; overflow-y: auto; }
+  .modal h3 { margin-bottom: 16px; font-size: 15px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
+  .modal select, .modal textarea, .modal input[type=text] {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit;
+  }
+  .modal select:focus, .modal textarea:focus { outline: none; border-color: var(--accent); }
+  .modal textarea { resize: vertical; min-height: 80px; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .draft-body { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 10px; }
+  .draft-saved { color: var(--green); font-size: 12px; margin-top: 6px; }
+
+  /* ── Pipeline log ── */
+  .pipeline-log { background: #000; border-radius: 6px; padding: 10px 12px; font-family: monospace; font-size: 12px; max-height: 320px; overflow-y: auto; color: #86efac; white-space: pre-wrap; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff3; border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; font-size: 13px; box-shadow: 0 4px 20px rgba(0,0,0,.5); z-index: 300; animation: fadeIn .2s ease; }
+  #toast .undo-btn { background: var(--accent); color: #fff; border-radius: 5px; padding: 4px 10px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; }
+  #toast .dismiss-btn { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 2px; }
+  @keyframes fadeIn { from { opacity:0; transform: translateX(-50%) translateY(8px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">📬 Email Assistant</div>
+  <div class="header-right">
+    <span id="last-run" style="font-size:11px;color:var(--muted)"></span>
+    <button class="btn-pipeline" onclick="runPipeline()">
+      <span id="pipeline-btn-icon">🔄</span> Run Pipeline
+    </button>
+  </div>
+</header>
+
+<!-- ── Tabs ── -->
+<nav>
+  <button class="active" onclick="switchTab('inbox',this)">Inbox <span class="badge" id="badge-inbox">0</span></button>
+  <button onclick="switchTab('tasks',this)">Tasks <span class="badge" id="badge-tasks">0</span></button>
+  <button onclick="switchTab('replies',this)">Pending Replies <span class="badge" id="badge-replies">0</span></button>
+  <button onclick="switchTab('followups',this)">Follow-ups <span class="badge" id="badge-followups">0</span></button>
+</nav>
+
+<!-- ── Inbox ── -->
+<div id="tab-inbox" class="tab-content active">
+  <div class="toolbar">
+    <label><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"> Select all</label>
+    <button class="btn-danger" id="btn-archive" onclick="archiveSelected()" disabled>🗄 Archive</button>
+    <button class="btn-green"  id="btn-draft"   onclick="draftSelected()"   disabled>✍ Draft Replies</button>
+    <span class="sel-count" id="sel-count"></span>
+    <div class="filter-group">
+      <select class="filter-select" id="filter-priority" onchange="applyFilters()">
+        <option value="">All Priorities</option>
+        <option value="high">🔴 High</option>
+        <option value="medium">🟡 Medium</option>
+        <option value="low">🔵 Low</option>
+        <option value="ignore">⚫ Ignore</option>
+      </select>
+      <select class="filter-select" id="filter-category" onchange="applyFilters()">
+        <option value="">All Categories</option>
+        <option value="action_required">Action Required</option>
+        <option value="needs_reply">Needs Reply</option>
+        <option value="fyi">FYI</option>
+        <option value="newsletter">Newsletter</option>
+        <option value="notification">Notification</option>
+        <option value="spam">Spam</option>
+        <option value="job_opportunity">Job Lead</option>
+      </select>
+      <select class="filter-select" id="filter-date" onchange="applyFilters()">
+        <option value="">All Dates</option>
+        <option value="today">Today</option>
+        <option value="week">This Week</option>
+        <option value="month">This Month</option>
+      </select>
+      <button class="btn-secondary btn-sm" id="btn-clear-filters" onclick="clearFilters()" style="display:none" title="Clear filters">✕ Clear</button>
+    </div>
+  </div>
+  <div id="email-list" class="email-list"></div>
+</div>
+
+<!-- ── Tasks ── -->
+<div id="tab-tasks" class="tab-content">
+  <div id="task-list" class="task-list"></div>
+</div>
+
+<!-- ── Pending Replies ── -->
+<div id="tab-replies" class="tab-content">
+  <div id="replies-list" class="task-list"></div>
+</div>
+
+<!-- ── Follow-ups ── -->
+<div id="tab-followups" class="tab-content">
+  <div id="followups-list" class="task-list"></div>
+</div>
+
+<!-- ── Feedback Modal ── -->
+<div class="modal-bg" id="feedback-modal-bg">
+  <div class="modal">
+    <h3>✏️ Correct Classification</h3>
+    <input type="hidden" id="fb-email-id">
+    <input type="hidden" id="fb-orig-priority">
+    <input type="hidden" id="fb-orig-category">
+    <p style="font-size:12px;color:var(--muted)" id="fb-subject"></p>
+
+    <label>Correct Priority</label>
+    <select id="fb-priority">
+      <option value="">— no change —</option>
+      <option value="high">🔴 High</option>
+      <option value="medium">🟡 Medium</option>
+      <option value="low">🔵 Low</option>
+      <option value="ignore">⚪ Ignore</option>
+    </select>
+
+    <label>Correct Category</label>
+    <select id="fb-category">
+      <option value="">— no change —</option>
+      <option value="action_required">action_required</option>
+      <option value="needs_reply">needs_reply</option>
+      <option value="fyi">fyi</option>
+      <option value="newsletter">newsletter</option>
+      <option value="notification">notification</option>
+      <option value="spam">spam</option>
+    </select>
+
+    <label>Note (optional)</label>
+    <textarea id="fb-note" placeholder="e.g. Emails from this sender are always newsletters"></textarea>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeFeedbackModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitFeedback()">Save Feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Draft Preview Modal ── -->
+<div class="modal-bg" id="draft-modal-bg">
+  <div class="modal">
+    <h3>✍ Draft Replies</h3>
+    <div id="draft-list"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeDraftModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pipeline Modal ── -->
+<div class="modal-bg" id="pipeline-modal-bg">
+  <div class="modal" style="width:620px">
+    <h3 style="display:flex;align-items:center;gap:8px">
+      <span id="pipeline-modal-icon">🔄</span> Pipeline
+      <span id="pipeline-spinner" class="spinner" style="display:none"></span>
+    </h3>
+    <div id="pipeline-log" class="pipeline-log" style="margin-top:12px">Starting…</div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="pipeline-close-btn" onclick="closePipelineModal()" disabled>Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let emails         = [];          // full unarchived list (source of truth)
+let filteredEmails = [];          // currently displayed (after filters)
+let selected       = new Set();
+let pollTimer      = null;
+let undoStack      = [];          // [{type, description, undo: async fn}]
+let toastTimer     = null;
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  loadEmails();
+  loadTasks();
+  loadReplies();
+  loadFollowups();
+});
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll("nav button").forEach(el => el.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  btn.classList.add("active");
+}
+
+// ── Load emails ───────────────────────────────────────────────────────────────
+async function loadEmails() {
+  const res = await fetch("/api/emails");
+  emails    = await res.json();
+  applyFilters();   // re-apply active filters (or just copy all if none)
+  document.getElementById("badge-inbox").textContent = emails.length;
+}
+
+function renderEmails() {
+  const el = document.getElementById("email-list");
+  if (!emails.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div><div>No emails. Run the pipeline to fetch your inbox.</div></div>';
+    return;
+  }
+  if (!filteredEmails.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">🔍</div><div>No emails match the current filters. <button class="btn-secondary btn-sm" onclick="clearFilters()" style="margin-left:8px">Clear filters</button></div></div>';
+    return;
+  }
+  el.innerHTML = filteredEmails.map(e => emailRow(e)).join("");
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const priority  = document.getElementById("filter-priority").value;
+  const category  = document.getElementById("filter-category").value;
+  const dateRange = document.getElementById("filter-date").value;
+  const now       = new Date();
+
+  filteredEmails = emails.filter(e => {
+    if (priority && e.priority !== priority) return false;
+    if (category && e.category !== category) return false;
+    if (dateRange && e.received_at) {
+      const d = new Date(e.received_at);
+      if (dateRange === "today") {
+        if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth() || d.getDate() !== now.getDate()) return false;
+      } else if (dateRange === "week") {
+        if (d < new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)) return false;
+      } else if (dateRange === "month") {
+        if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) return false;
+      }
+    }
+    return true;
+  });
+
+  const hasFilter = priority || category || dateRange;
+  document.getElementById("btn-clear-filters").style.display = hasFilter ? "" : "none";
+  document.querySelectorAll(".filter-select").forEach(s => s.classList.toggle("active", !!s.value));
+
+  renderEmails();
+}
+
+function clearFilters() {
+  document.getElementById("filter-priority").value = "";
+  document.getElementById("filter-category").value  = "";
+  document.getElementById("filter-date").value      = "";
+  document.getElementById("btn-clear-filters").style.display = "none";
+  document.querySelectorAll(".filter-select").forEach(s => s.classList.remove("active"));
+  filteredEmails = [...emails];
+  renderEmails();
+}
+
+function emailRow(e) {
+  const dotClass = { high:"dot-high", medium:"dot-medium", low:"dot-low" }[e.priority] || "dot-ignore";
+  const date     = e.received_at ? e.received_at.slice(0,10) : "";
+  const jobTag   = e.job_opportunity ? '<span class="tag tag-job">JOB</span>' : "";
+  const repTag   = e.reply_needed   ? '<span class="tag tag-reply">REPLY</span>' : "";
+  const catTag   = `<span class="tag tag-cat">${e.category || ""}</span>`;
+  const items    = (e.action_items || []).map(i => `<div class="action-item">${esc(i)}</div>`).join("");
+
+  return `
+  <div class="email-row" id="row-${e.email_id}" onclick="toggleExpand(event,'${e.email_id}')">
+    <input type="checkbox" onclick="event.stopPropagation()" onchange="toggleSelect('${e.email_id}','${e.graph_id}',this)"
+           ${selected.has(e.email_id) ? "checked" : ""}>
+    <div class="priority-dot ${dotClass}"></div>
+    <div class="email-main">
+      <div class="email-header">
+        <span class="email-subject">${esc(e.subject || "(no subject)")}</span>
+        <span class="email-from">${esc(e.from_addr || "")}</span>
+        <span class="email-date">${date}</span>
+      </div>
+      <div class="email-summary">${esc(e.summary || "")}</div>
+      <div class="email-expand">
+        <div class="email-actions-row">${catTag}${jobTag}${repTag}</div>
+        ${items}
+        <div class="email-actions-row" style="margin-top:8px">
+          <button class="btn-secondary btn-sm" onclick="event.stopPropagation();openFeedbackModal('${e.email_id}','${esc(e.subject||"")}','${e.from_addr||""}','${e.priority||""}','${e.category||""}')">✏️ Feedback</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleExpand(event, id) {
+  if (event.target.type === "checkbox" || event.target.tagName === "BUTTON") return;
+  document.getElementById("row-" + id).classList.toggle("open");
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────────
+function toggleSelect(emailId, graphId, cb) {
+  if (cb.checked) selected.add(emailId);
+  else            selected.delete(emailId);
+  const row = document.getElementById("row-" + emailId);
+  row.classList.toggle("selected", cb.checked);
+  updateToolbar();
+}
+
+function toggleSelectAll(cb) {
+  selected.clear();
+  filteredEmails.forEach(e => {
+    if (cb.checked) selected.add(e.email_id);
+    const row = document.getElementById("row-" + e.email_id);
+    if (row) {
+      row.classList.toggle("selected", cb.checked);
+      row.querySelector("input[type=checkbox]").checked = cb.checked;
+    }
+  });
+  updateToolbar();
+}
+
+function updateToolbar() {
+  const n = selected.size;
+  document.getElementById("sel-count").textContent    = n ? `${n} selected` : "";
+  document.getElementById("btn-archive").disabled     = n === 0;
+  document.getElementById("btn-draft").disabled       = n === 0;
+}
+
+// ── Toast & Undo ──────────────────────────────────────────────────────────────
+function showToast(message, undoFn) {
+  clearTimeout(toastTimer);
+  const existing = document.getElementById("toast");
+  if (existing) existing.remove();
+
+  const t = document.createElement("div");
+  t.id = "toast";
+  t.innerHTML = `<span>${message}</span>`
+    + (undoFn ? `<button class="undo-btn" onclick="triggerUndo()">⌘Z Undo</button>` : "")
+    + `<button class="dismiss-btn" onclick="this.parentElement.remove()">×</button>`;
+  document.body.appendChild(t);
+  toastTimer = setTimeout(() => t.remove(), 6000);
+}
+
+function pushUndo(description, undoFn) {
+  undoStack.push({ description, undoFn });
+  showToast(description, undoFn);
+}
+
+async function triggerUndo() {
+  const action = undoStack.pop();
+  if (!action) return;
+  document.getElementById("toast")?.remove();
+  await action.undoFn();
+}
+
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+    const active = document.activeElement;
+    if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT")) return;
+    e.preventDefault();
+    triggerUndo();
+  }
+});
+
+// ── Archive ───────────────────────────────────────────────────────────────────
+async function archiveSelected() {
+  const toArchive = emails.filter(e => selected.has(e.email_id));
+  const graphIds  = toArchive.map(e => e.graph_id).filter(Boolean);
+  const emailIds  = toArchive.map(e => e.email_id);
+  if (!graphIds.length) return showToast("⚠ No archivable emails selected (missing Outlook ID).");
+
+  document.getElementById("btn-archive").disabled    = true;
+  document.getElementById("btn-archive").textContent = "Archiving…";
+
+  const res  = await fetch("/api/archive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({graph_ids: graphIds, email_ids: emailIds}) });
+  const data = await res.json();
+
+  document.getElementById("btn-archive").disabled    = false;
+  document.getElementById("btn-archive").textContent = "🗄 Archive";
+
+  if (data.error) { showToast("⚠ " + data.error); return; }
+
+  if (data.archived > 0) {
+    const archivedSet = new Set(toArchive.filter(e => graphIds.includes(e.graph_id)).map(e => e.email_id));
+    const snapshot    = toArchive.filter(e => archivedSet.has(e.email_id));  // for undo
+    emails         = emails.filter(e => !archivedSet.has(e.email_id));
+    filteredEmails = filteredEmails.filter(e => !archivedSet.has(e.email_id));
+    selected.clear();
+    renderEmails();
+    updateToolbar();
+    document.getElementById("badge-inbox").textContent = emails.length;
+
+    pushUndo(`Archived ${data.archived} email${data.archived > 1 ? "s" : ""}`, async () => {
+      const r = await fetch("/api/unarchive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({graph_ids: graphIds}) });
+      const d = await r.json();
+      if (d.restored > 0) {
+        emails = [...snapshot, ...emails];
+        emails.sort((a,b) => {
+          const p = {high:1,medium:2,low:3};
+          return (p[a.priority]||4) - (p[b.priority]||4) || b.received_at?.localeCompare(a.received_at||"");
+        });
+        applyFilters();   // re-filter after restore
+        document.getElementById("badge-inbox").textContent = emails.length;
+        showToast(`Restored ${d.restored} email${d.restored > 1 ? "s" : ""}`);
+      } else {
+        showToast("⚠ Could not restore emails");
+      }
+    });
+  }
+
+  if (data.errors?.length) {
+    const msg = data.errors[0]?.error || "unknown error";
+    showToast(`⚠ ${data.errors.length} email(s) failed: ${msg}`);
+  }
+}
+
+// ── Draft replies ─────────────────────────────────────────────────────────────
+async function draftSelected() {
+  const emailIds = [...selected];
+  if (!emailIds.length) return;
+
+  document.getElementById("btn-draft").disabled    = true;
+  document.getElementById("btn-draft").textContent = "Generating…";
+
+  const res  = await fetch("/api/draft-replies", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({email_ids: emailIds}) });
+  const data = await res.json();
+
+  document.getElementById("btn-draft").disabled    = false;
+  document.getElementById("btn-draft").textContent = "✍ Draft Replies";
+
+  if (data.error) return alert("Error: " + data.error);
+  showDraftModal(data.drafts || []);
+}
+
+function showDraftModal(drafts) {
+  const el = document.getElementById("draft-list");
+  el.innerHTML = drafts.map(d => `
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Re: ${esc(d.subject)}</div>
+      <div class="draft-body">${esc(d.draft_body)}</div>
+      ${d.saved_to_outlook ? '<div class="draft-saved">✓ Saved to Outlook Drafts</div>' : '<div style="font-size:11px;color:var(--muted)">⚠ Could not save to Outlook — check graph_id</div>'}
+    </div>`).join('<hr style="border-color:var(--border);margin:12px 0">');
+  document.getElementById("draft-modal-bg").classList.add("open");
+}
+
+function closeDraftModal() {
+  document.getElementById("draft-modal-bg").classList.remove("open");
+}
+
+// ── Feedback modal ────────────────────────────────────────────────────────────
+function openFeedbackModal(emailId, subject, fromAddr, priority, category) {
+  document.getElementById("fb-email-id").value      = emailId;
+  document.getElementById("fb-orig-priority").value = priority;
+  document.getElementById("fb-orig-category").value = category;
+  document.getElementById("fb-subject").textContent = subject;
+  document.getElementById("fb-priority").value      = "";
+  document.getElementById("fb-category").value      = "";
+  document.getElementById("fb-note").value          = "";
+  document.getElementById("feedback-modal-bg").classList.add("open");
+}
+
+function closeFeedbackModal() {
+  document.getElementById("feedback-modal-bg").classList.remove("open");
+}
+
+async function submitFeedback() {
+  const payload = {
+    email_id:          document.getElementById("fb-email-id").value,
+    subject:           document.getElementById("fb-subject").textContent,
+    original_priority: document.getElementById("fb-orig-priority").value,
+    original_category: document.getElementById("fb-orig-category").value,
+    correct_priority:  document.getElementById("fb-priority").value,
+    correct_category:  document.getElementById("fb-category").value,
+    note:              document.getElementById("fb-note").value,
+  };
+  await fetch("/api/feedback", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+  closeFeedbackModal();
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+async function loadTasks() {
+  const res   = await fetch("/api/tasks");
+  const tasks = await res.json();
+  document.getElementById("badge-tasks").textContent = tasks.length;
+  const el = document.getElementById("task-list");
+  if (!tasks.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">✅</div><div>No open tasks.</div></div>';
+    return;
+  }
+  el.innerHTML = tasks.map(t => `
+    <div class="task-row" id="task-${t.id}">
+      <div style="flex:1">
+        <div class="task-text">${esc(t.task)}</div>
+        <div class="task-source">${esc(t.source || "")}</div>
+      </div>
+      ${t.due_date ? `<span style="font-size:11px;color:var(--muted)">${t.due_date.slice(0,10)}</span>` : ""}
+      <button class="btn-green btn-sm" onclick="completeTask(${t.id}, ${JSON.stringify(t.task)})">✓ Done</button>
+    </div>`).join("");
+}
+
+async function completeTask(id, taskText) {
+  await fetch("/api/tasks/complete", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({task_id: id}) });
+  const row = document.getElementById("task-" + id);
+  const badge = document.getElementById("badge-tasks");
+  row?.remove();
+  badge.textContent = Math.max(0, parseInt(badge.textContent) - 1);
+
+  pushUndo(`Completed: "${taskText?.slice(0,40) || "task"}"`, async () => {
+    await fetch("/api/tasks/uncomplete", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({task_id: id}) });
+    loadTasks();
+    showToast("Task restored");
+  });
+}
+
+// ── Pending Replies ───────────────────────────────────────────────────────────
+async function loadReplies() {
+  const res     = await fetch("/api/pending-replies");
+  const replies = await res.json();
+  document.getElementById("badge-replies").textContent = replies.length;
+  const el = document.getElementById("replies-list");
+  if (!replies.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">💬</div><div>No pending replies.</div></div>';
+    return;
+  }
+  el.innerHTML = replies.map(r => {
+    const urgencyClass = r.urgency === "today" ? "urgency-today" : r.urgency === "this_week" ? "urgency-thisweek" : "urgency-whenever";
+    const urgencyLabel = r.urgency === "today" ? "Today" : r.urgency === "this_week" ? "This week" : "Whenever";
+    return `
+    <div class="reply-row">
+      <div style="flex:1">
+        <div style="font-weight:500">${esc(r.subject || "(no subject)")}</div>
+        <div style="font-size:12px;color:var(--muted)">From: ${esc(r.from_addr || "")}</div>
+      </div>
+      <span class="${urgencyClass}">${urgencyLabel}</span>
+    </div>`;
+  }).join("");
+}
+
+// ── Follow-ups ────────────────────────────────────────────────────────────────
+async function loadFollowups() {
+  const res      = await fetch("/api/followups");
+  const followups = await res.json();
+  document.getElementById("badge-followups").textContent = followups.length;
+  const el = document.getElementById("followups-list");
+  if (!followups.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">⏰</div><div>No overdue follow-ups.</div></div>';
+    return;
+  }
+  el.innerHTML = followups.map(f => {
+    const sentDate = f.sent_at ? f.sent_at.slice(0,10) : "";
+    return `
+    <div class="followup-row">
+      <div class="followup-subject">${esc(f.subject || "(no subject)")}</div>
+      <div class="followup-meta">To: ${esc(f.to_addr || "")} · Sent: ${sentDate}${f.reminded ? " · reminder sent" : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+// ── Pipeline ──────────────────────────────────────────────────────────────────
+async function runPipeline() {
+  document.getElementById("pipeline-log").textContent = "Starting pipeline…";
+  document.getElementById("pipeline-modal-bg").classList.add("open");
+  document.getElementById("pipeline-spinner").style.display = "inline-block";
+  document.getElementById("pipeline-close-btn").disabled    = true;
+  document.getElementById("pipeline-modal-icon").textContent = "🔄";
+
+  await fetch("/api/pipeline/run", { method:"POST" });
+  pollTimer = setInterval(pollPipeline, 1500);
+}
+
+async function pollPipeline() {
+  const res  = await fetch("/api/pipeline/status");
+  const data = await res.json();
+  const log  = document.getElementById("pipeline-log");
+  log.textContent = data.log.join("\n");
+  log.scrollTop   = log.scrollHeight;
+
+  if (!data.running) {
+    clearInterval(pollTimer);
+    document.getElementById("pipeline-spinner").style.display = "none";
+    document.getElementById("pipeline-close-btn").disabled    = false;
+    document.getElementById("pipeline-modal-icon").textContent = "✅";
+    loadEmails();
+    loadTasks();
+    loadReplies();
+    loadFollowups();
+  }
+}
+
+function closePipelineModal() {
+  document.getElementById("pipeline-modal-bg").classList.remove("open");
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Close modals on background click
+document.querySelectorAll(".modal-bg").forEach(bg => {
+  bg.addEventListener("click", e => { if (e.target === bg) bg.classList.remove("open"); });
+});
+</script>
+</body>
+</html>
