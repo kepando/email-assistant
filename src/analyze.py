@@ -141,7 +141,11 @@ def analyze_emails(emails: list[dict]) -> tuple[list[dict], list[dict]]:
         print(f"  → {len(to_analyze)} emails to Claude in {len(batches)} batch(es), {len(junk)} pre-filtered")
         for i, batch in enumerate(batches, 1):
             print(f"  → Batch {i}/{len(batches)}: {len(batch)} emails")
-            results.extend(call_claude(batch))
+            try:
+                results.extend(call_claude(batch))
+            except Exception as e:
+                ids = [e["email_id"] for e in batch]
+                print(f"  ⚠ Batch {i} failed ({e}) — {len(batch)} emails skipped: {ids}")
     else:
         print(f"  → All {len(junk)} emails pre-filtered, no API call needed")
 
