@@ -21,5 +21,12 @@ data/output/
 data/drafts/
 data/samples/
 
+# Token/auth caches
+.token_cache.json
+*.token_cache*
+
+# Claude Code project files
+.claude/
+
 # macOS
 .DS_Store
