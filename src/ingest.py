@@ -5,6 +5,7 @@ Token is cached locally — browser auth is only needed once.
 """
 
 import os
+import re
 import json
 import hashlib
 from pathlib import Path
@@ -28,6 +29,11 @@ FETCH_LIMIT    = 50
 BODY_MAX_CHARS = 2000
 
 RAW_PATH.mkdir(parents=True, exist_ok=True)
+
+
+def strip_html(text: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -106,11 +112,8 @@ def parse_message(msg: dict) -> dict:
     body_content = msg.get("body", {}).get("content", "")
     body_type    = msg.get("body", {}).get("contentType", "text")
 
-    # Strip basic HTML tags if body is HTML
     if body_type == "html":
-        import re
-        body_content = re.sub(r"<[^>]+>", " ", body_content)
-        body_content = re.sub(r"\s+", " ", body_content).strip()
+        body_content = strip_html(body_content)
 
     body_content = body_content[:BODY_MAX_CHARS]
 

@@ -69,8 +69,8 @@ def init_feedback_table(conn: sqlite3.Connection) -> None:
             from_addr       TEXT,
             original_priority   TEXT,
             original_category   TEXT,
-            corrected_priority  TEXT,
-            corrected_category  TEXT,
+            correct_priority    TEXT,
+            correct_category    TEXT,
             feedback_type   TEXT,   -- 'wrong_priority' | 'wrong_category' | 'should_filter' | 'should_not_filter'
             note            TEXT,
             rule_applied    INTEGER DEFAULT 0,
@@ -187,7 +187,7 @@ def _save_feedback(conn, email_id, subject, from_addr, orig_p, orig_c,
     conn.execute("""
         INSERT INTO feedback
         (email_id, subject, from_addr, original_priority, original_category,
-         corrected_priority, corrected_category, feedback_type, note, created_at)
+         correct_priority, correct_category, feedback_type, note, created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?)
     """, (email_id, subject, from_addr, orig_p, orig_c, corr_p, corr_c, fb_type, note, now))
     conn.commit()
@@ -198,7 +198,7 @@ def _save_feedback(conn, email_id, subject, from_addr, orig_p, orig_c,
 def suggest_improvements(conn: sqlite3.Connection) -> None:
     rows = conn.execute("""
         SELECT subject, from_addr, original_priority, original_category,
-               corrected_priority, corrected_category, feedback_type, note
+               correct_priority, correct_category, feedback_type, note
         FROM feedback
         WHERE rule_applied = 0
         ORDER BY created_at DESC

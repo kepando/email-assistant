@@ -258,9 +258,8 @@ def run(reply_id: int = None, list_only: bool = False):
                 email_body = msg.get("body", {}).get("content", "")
                 # Strip HTML if needed
                 if msg.get("body", {}).get("contentType") == "html":
-                    import re
-                    email_body = re.sub(r"<[^>]+>", " ", email_body)
-                    email_body = re.sub(r"\s+", " ", email_body).strip()
+                    from ingest import strip_html
+                    email_body = strip_html(email_body)
             except Exception as e:
                 print(f"  ⚠ Could not fetch full body: {e}")
                 email_body = p.get("summary", "")

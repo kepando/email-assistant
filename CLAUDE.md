@@ -2,6 +2,10 @@
 
 Standing context, permissions, and preferences for this project.
 
+## Parent framework
+
+This project is part of the **kepando-dev** umbrella. Read `/Users/ken/Projects/kepando-dev/CLAUDE.md` for shared guidelines (tech stack defaults, code style, responsive design, project conventions). Project-specific settings below override shared ones where they conflict.
+
 ## Project overview
 
 Personal AI email triage tool. Fetches emails from Outlook (Microsoft Graph API), analyzes them with Claude, stores results in SQLite, and serves a local Flask dashboard at `http://localhost:5001`. Optionally posts daily digests to Notion.
@@ -36,6 +40,8 @@ These actions are pre-approved — no need to ask each time:
 - `Skill(update-config)`
 - `Bash(python3 /Users/ken/Projects/email-assistant/.claude/sync_permissions.py)`
 - `Bash(jq:*)`
+- `Bash(lsof -Pi :5001 -sTCP:LISTEN)`
+- `Bash(sqlite3:*)`
 
 ## Preferences
 
@@ -44,7 +50,7 @@ These actions are pre-approved — no need to ask each time:
 - Don't introduce abstractions or helpers for one-off things
 - Prefer editing existing files over creating new ones
 - When writing Python, match the existing style (no f-string over-engineering, keep it readable)
-- Sign git commits with: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+- Sign git commits with: `Co-Authored-By: Claude <model> <noreply@anthropic.com>` (use the active model name)
 
 ## Environment
 

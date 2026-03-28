@@ -1,4 +1,3 @@
-import os
 import json
 import sqlite3
 from pathlib import Path
@@ -6,8 +5,6 @@ from dotenv import load_dotenv
 import anthropic
 
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
-
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "analyze_emails.txt"
 OUTPUT_PATH = Path(__file__).parent.parent / "data" / "output"
@@ -109,6 +106,7 @@ def chunk_by_tokens(emails: list[dict], budget: int) -> list[list[dict]]:
 
 def call_claude(batch: list[dict]) -> list[dict]:
     """Single API call for one batch of slimmed emails."""
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
     system_prompt = load_system_prompt()
     user_message = f"Analyze these emails and return structured JSON:\n\n{json.dumps(batch, indent=2)}"
     response = client.messages.create(
