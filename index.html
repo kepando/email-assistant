@@ -459,7 +459,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/02/2026 05:46 AM PDT';
+const LAST_UPDATED = '04/02/2026 06:16 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -662,6 +662,15 @@ async function fetchEmails(limit = CFG.fetchLimit) {
   return (data?.value || []).map(parseMessage);
 }
 
+function hashShort(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  const h2 = h >>> 0;
+  let h3 = 0x811c9dc5;
+  for (let i = str.length - 1; i >= 0; i--) { h3 ^= str.charCodeAt(i); h3 = Math.imul(h3, 0x01000193); }
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h3 >>> 0).toString(16).padStart(8, '0');
+}
+
 function parseMessage(msg) {
   const sender = msg.from?.emailAddress || {};
   const senderStr = `${sender.name || ''} <${sender.address || ''}>`.trim();
@@ -673,7 +682,7 @@ function parseMessage(msg) {
   }
   body = body.replace(/\s+/g, ' ').trim().slice(0, 2000);
   return {
-    email_id: msg.id.slice(0, 16),
+    email_id: hashShort(msg.id),
     graph_id: msg.id,
     from: senderStr,
     subject: msg.subject || '(no subject)',
