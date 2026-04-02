@@ -1,6 +1,6 @@
 {
   "name": "Email Assistant",
-  "short_name": "Email",
+  "short_name": "EA",
   "description": "AI-powered email triage and inbox management",
   "start_url": ".",
   "display": "standalone",
