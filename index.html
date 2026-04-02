@@ -471,7 +471,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/02/2026 06:35 AM PDT';
+const LAST_UPDATED = '04/02/2026 06:39 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1024,8 +1024,9 @@ function emailRow(e) {
       <div class="email-expand">
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${catTag}${jobTag}${repTag}</div>
         ${items}
-        <div style="display:flex;gap:6px;margin-top:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           ${link}
+          <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();flagFollowUp('${e.email_id}')">Follow Up</button>
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openFeedback('${e.email_id}')">Feedback</button>
         </div>
       </div>
@@ -1050,7 +1051,7 @@ function renderTasks() {
       <div style="flex:1">
         <div class="task-text">${esc(t.task)}</div>
         <div class="task-source">${esc(t.source || '')}</div>
-        <div style="display:flex;gap:6px;margin-top:6px">${outlookLink(t.email_id)}</div>
+        <div style="display:flex;gap:6px;margin-top:6px">${outlookLink(t.email_id)}<button class="btn btn-secondary btn-sm" onclick="flagFollowUp('${t.email_id}')">Follow Up</button></div>
       </div>
       ${t.due_date ? `<span style="font-size:11px;color:var(--muted)">${t.due_date.slice(0, 10)}</span>` : ''}
       <button class="btn btn-green btn-sm" onclick="completeTask('${t.id}')">Done</button>
@@ -1074,6 +1075,7 @@ function renderReplies() {
       <div style="width:100%;display:flex;gap:6px;margin-top:6px">
         ${outlookLink(r.email_id)}
         <button class="btn btn-green btn-sm" onclick="draftSingleReply('${r.email_id}')">Draft Reply</button>
+        <button class="btn btn-secondary btn-sm" onclick="flagFollowUp('${r.email_id}')">Follow Up</button>
       </div>
     </div>`;
   }).join('');
@@ -1083,14 +1085,18 @@ function renderFollowups() {
   const open = state.data.followUps.filter(f => f.status === 'open');
   const el = document.getElementById('followups-list');
   if (!open.length) { el.innerHTML = '<div class="empty"><div class="icon">⏰</div><div>No open follow-ups.</div></div>'; return; }
-  el.innerHTML = open.map(f => `
-    <div class="followup-row">
-      <div style="flex:1">
+  el.innerHTML = open.map(f => {
+    const due = f.follow_up_date ? `Due: ${f.follow_up_date.slice(0, 10)}` : 'No due date';
+    return `
+    <div class="followup-row" style="flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
         <div style="font-weight:500">${esc(f.subject)}</div>
-        <div style="font-size:12px;color:var(--muted)">From: ${esc(f.from || '')} · Due: ${(f.follow_up_date || '').slice(0, 10)}</div>
+        <div style="font-size:12px;color:var(--muted)">From: ${esc(f.from || '')} · ${due}</div>
       </div>
       <button class="btn btn-green btn-sm" onclick="completeFollowup('${f.id}')">Done</button>
-    </div>`).join('');
+      <div style="width:100%;display:flex;gap:6px;margin-top:6px">${outlookLink(f.email_id)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ================================================================
@@ -1225,6 +1231,25 @@ function completeTask(id) {
   debouncedSave();
   renderTasks();
   showToast('Task completed');
+}
+
+function flagFollowUp(emailId) {
+  const email = getEmailByEid(emailId);
+  if (!email) { showToast('Email not found'); return; }
+  const exists = state.data.followUps.some(f => f.email_id === emailId && f.status === 'open');
+  if (exists) { showToast('Already flagged'); return; }
+  state.data.followUps.push({
+    id: crypto.randomUUID(),
+    email_id: emailId,
+    from: email.from,
+    subject: email.subject,
+    follow_up_date: null,
+    status: 'open',
+    manual: true,
+  });
+  debouncedSave();
+  renderFollowups();
+  showToast('Flagged for follow-up');
 }
 
 function completeFollowup(id) {
