@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1117">
+<title>Email Assistant</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>">
+<script src="https://unpkg.com/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<style>
+/* ── Reset + Base ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+* { -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --bg:       #0f1117;
+  --bg2:      #1a1d27;
+  --bg3:      #252836;
+  --border:   #2d3149;
+  --text:     #e2e8f0;
+  --muted:    #8892a0;
+  --high:     #ef4444;
+  --medium:   #f59e0b;
+  --low:      #3b82f6;
+  --ignore:   #4b5563;
+  --accent:   #6366f1;
+  --green:    #10b981;
+  --header-h: 52px;
+  --nav-h:    60px;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+button { cursor: pointer; border: none; font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+/* ── Login Screen ─────────────────────────────────────── */
+#login-screen {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  padding: 22vh 24px 24px; gap: 20px;
+}
+#login-screen.hidden { display: none; }
+.login-logo {
+  width: 80px; height: 80px;
+  background: var(--accent); border-radius: 22px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px;
+}
+.login-title { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+.login-sub { color: var(--muted); text-align: center; max-width: 300px; line-height: 1.5; font-size: 14px; }
+.btn-ms {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--accent); color: white;
+  border-radius: 10px; padding: 14px 24px;
+  font-size: 15px; font-weight: 600;
+  width: 100%; max-width: 300px;
+}
+.btn-ms:disabled { opacity: 0.4; cursor: default; }
+.login-note { font-size: 12px; color: var(--muted); max-width: 280px; text-align: center; line-height: 1.5; }
+
+/* ── App Shell ────────────────────────────────────────── */
+#app { display: none; }
+#app.visible { display: block; }
+
+.header {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: var(--header-h);
+  padding-top: env(safe-area-inset-top);
+  display: flex; align-items: center; justify-content: space-between;
+  padding-left: 16px; padding-right: 16px;
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  z-index: 100;
+}
+.header-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.header-user { font-size: 11px; color: var(--muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Main ─────────────────────────────────────────────── */
+.main {
+  padding-top: calc(var(--header-h) + env(safe-area-inset-top));
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+  min-height: 100%;
+}
+.view { display: none; padding: 12px 16px; }
+.view.active { display: block; }
+
+/* ── Bottom Nav ───────────────────────────────────────── */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: var(--nav-h);
+  padding-bottom: env(safe-area-inset-bottom);
+  display: flex; justify-content: space-around; align-items: center;
+  background: var(--bg2); border-top: 1px solid var(--border);
+  z-index: 100;
+}
+.nav-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; color: var(--muted);
+  font-size: 10px; font-weight: 600;
+  padding: 6px 8px; min-width: 48px; min-height: 44px;
+}
+.nav-btn.active { color: var(--accent); }
+.nav-icon { font-size: 18px; }
+.nav-badge {
+  background: var(--accent); color: #fff; border-radius: 10px;
+  padding: 0 5px; font-size: 10px; min-width: 16px; text-align: center;
+  position: absolute; top: 2px; right: 2px;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  min-height: 36px;
+}
+.btn-primary   { background: var(--accent); color: #fff; }
+.btn-secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+.btn-danger    { background: #7f1d1d; color: #fca5a5; }
+.btn-green     { background: #064e3b; color: #6ee7b7; }
+.btn-sm        { padding: 4px 10px; font-size: 12px; min-height: 28px; }
+.btn:disabled  { opacity: 0.35; cursor: default; }
+
+/* ── Cards ────────────────────────────────────────────── */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+}
+
+/* ── Email Row ────────────────────────────────────────── */
+.email-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; transition: border-color .15s; }
+.email-row:hover { border-color: var(--accent); }
+.email-row.selected { border-color: var(--accent); background: #1e2035; }
+.email-row input[type=checkbox] { margin-top: 3px; flex-shrink: 0; accent-color: var(--accent); }
+.priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.dot-high   { background: var(--high); }
+.dot-medium { background: var(--medium); }
+.dot-low    { background: var(--low); }
+.dot-ignore { background: var(--ignore); }
+.email-main { flex: 1; min-width: 0; }
+.email-header { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.email-subject { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.email-from { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.email-date { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.email-summary { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.4; }
+.email-expand { display: none; margin-top: 8px; }
+.email-row.open .email-expand { display: block; }
+.tag { font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; display: inline-block; margin-right: 4px; }
+.tag-job   { background: #1a2e1a; color: #86efac; }
+.tag-reply { background: #1a1a2e; color: #a5b4fc; }
+.tag-cat   { background: var(--bg3); color: var(--muted); }
+.action-item { font-size: 12px; color: var(--muted); margin-top: 3px; padding-left: 12px; border-left: 2px solid var(--border); }
+
+/* ── Toolbar ──────────────────────────────────────────── */
+.toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; font-size: 12px; }
+.sel-count { color: var(--muted); font-size: 12px; }
+.filter-group { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.filter-select {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 4px 6px; font-size: 12px; cursor: pointer;
+}
+.filter-select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Task / Reply / Followup Rows ─────────────────────── */
+.task-row, .reply-row, .followup-row {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.task-text { flex: 1; }
+.task-source { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.urgency-today    { color: var(--high); font-size: 11px; font-weight: 600; }
+.urgency-thisweek { color: var(--medium); font-size: 11px; font-weight: 600; }
+.urgency-whenever { color: var(--muted); font-size: 11px; }
+
+/* ── Settings ─────────────────────────────────────────── */
+.settings-section { margin-bottom: 24px; }
+.settings-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.settings-input {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 10px 12px; font-size: 14px;
+}
+.settings-input:focus { outline: none; border-color: var(--accent); }
+.settings-status { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--bg2); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 6px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.dot-green { background: var(--green); }
+.dot-red { background: var(--high); }
+
+/* ── Modal ────────────────────────────────────────────── */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 200; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 500px; max-width: 95vw; max-height: 85vh; overflow-y: auto; }
+.modal h3 { margin-bottom: 12px; font-size: 15px; }
+.modal label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
+.modal select, .modal textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px; font-size: 13px; }
+.modal textarea { resize: vertical; min-height: 60px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ── Sync Log ─────────────────────────────────────────── */
+.sync-log { background: #000; border-radius: 8px; padding: 10px 12px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; color: #86efac; white-space: pre-wrap; margin-top: 8px; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff3; border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty State ──────────────────────────────────────── */
+.empty { text-align: center; padding: 48px 20px; color: var(--muted); }
+.empty .icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ── Toast ────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);
+  left: 50%; transform: translateX(-50%);
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  padding: 10px 16px; border-radius: 8px; font-size: 13px;
+  z-index: 300; opacity: 0; transition: opacity .2s; pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5);
+}
+.toast.show { opacity: 1; pointer-events: auto; }
+
+/* ── Tablet (600px+) ──────────────────────────────────── */
+@media (min-width: 600px) {
+  .view { padding: 16px 24px; }
+  .email-subject { max-width: 400px; }
+  .email-from { max-width: 260px; }
+}
+
+/* ── Desktop (900px+) — sidebar ───────────────────────── */
+@media (min-width: 900px) {
+  .bottom-nav {
+    top: 0; bottom: 0; right: auto;
+    width: 200px; height: 100vh;
+    flex-direction: column; justify-content: flex-start;
+    padding-top: calc(var(--header-h) + env(safe-area-inset-top) + 16px);
+    gap: 2px; border-top: none; border-right: 1px solid var(--border);
+  }
+  .nav-btn {
+    flex-direction: row; gap: 10px; width: 100%;
+    padding: 10px 20px; font-size: 13px; justify-content: flex-start;
+    position: relative;
+  }
+  .header { left: 200px; }
+  .main { margin-left: 200px; }
+  .view { max-width: 800px; }
+  .email-subject { max-width: 480px; }
+}
+
+/* ── Scrollbar ────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── Login ── -->
+<div id="login-screen">
+  <div class="login-logo">📬</div>
+  <div class="login-title">Email Assistant</div>
+  <div class="login-sub">AI-powered email triage. Works on all your devices.</div>
+  <button class="btn-ms" onclick="signIn()" disabled>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect width="9.5" height="9.5" fill="#f25022"/>
+      <rect x="10.5" width="9.5" height="9.5" fill="#7fba00"/>
+      <rect y="10.5" width="9.5" height="9.5" fill="#00a4ef"/>
+      <rect x="10.5" y="10.5" width="9.5" height="9.5" fill="#ffb900"/>
+    </svg>
+    Sign in with Microsoft
+  </button>
+  <div class="login-note">Uses your Microsoft account for secure email access and cross-device storage via OneDrive.</div>
+</div>
+
+<!-- ── App ── -->
+<div id="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">📬 Email Assistant</div>
+    <div class="header-right">
+      <span class="header-user" id="header-user"></span>
+      <button class="btn btn-primary btn-sm" id="btn-sync" onclick="runSync()">Sync</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Inbox -->
+    <div id="view-inbox" class="view active">
+      <div class="toolbar">
+        <label><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"> All</label>
+        <button class="btn btn-danger btn-sm" id="btn-archive" onclick="archiveSelected()" disabled>Archive</button>
+        <button class="btn btn-green btn-sm" id="btn-draft" onclick="draftSelected()" disabled>Draft Reply</button>
+        <span class="sel-count" id="sel-count"></span>
+        <div class="filter-group">
+          <select class="filter-select" id="filter-priority" onchange="applyFilters()">
+            <option value="">Priority</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="ignore">Ignore</option>
+          </select>
+          <select class="filter-select" id="filter-category" onchange="applyFilters()">
+            <option value="">Category</option>
+            <option value="action_required">Action Required</option>
+            <option value="needs_reply">Needs Reply</option>
+            <option value="fyi">FYI</option>
+            <option value="newsletter">Newsletter</option>
+            <option value="notification">Notification</option>
+            <option value="spam">Spam</option>
+          </select>
+        </div>
+      </div>
+      <div id="email-list"></div>
+    </div>
+
+    <!-- Tasks -->
+    <div id="view-tasks" class="view">
+      <div id="task-list"></div>
+    </div>
+
+    <!-- Pending Replies -->
+    <div id="view-replies" class="view">
+      <div id="replies-list"></div>
+    </div>
+
+    <!-- Follow-ups -->
+    <div id="view-followups" class="view">
+      <div id="followups-list"></div>
+    </div>
+
+    <!-- Settings -->
+    <div id="view-settings" class="view">
+      <div class="settings-section">
+        <div class="settings-label">Claude API</div>
+        <div class="card">
+          <input type="password" class="settings-input" id="settings-api-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">Account</div>
+        <div class="settings-status">
+          <span>Microsoft Account</span>
+          <span style="font-size:12px;color:var(--muted);display:flex;align-items:center" id="settings-ms-acct"></span>
+        </div>
+        <div class="settings-status">
+          <span>OneDrive</span>
+          <span style="font-size:12px;color:var(--muted);display:flex;align-items:center" id="settings-od-status">
+            <span class="status-dot dot-red"></span>Not synced
+          </span>
+        </div>
+        <div class="settings-status">
+          <span>Emails synced</span>
+          <span style="font-size:12px;color:var(--muted)" id="settings-email-count">0</span>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()" style="margin-bottom:8px;width:100%">Save Settings</button>
+      <button class="btn btn-secondary" onclick="doSignOut()" style="width:100%">Sign Out</button>
+      <div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 4px">
+        Last updated: <span id="last-updated"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" onclick="navigate('inbox',this)">
+      <span class="nav-icon">📥</span> Inbox
+    </button>
+    <button class="nav-btn" onclick="navigate('tasks',this)">
+      <span class="nav-icon">📋</span> Tasks
+    </button>
+    <button class="nav-btn" onclick="navigate('replies',this)">
+      <span class="nav-icon">💬</span> Replies
+    </button>
+    <button class="nav-btn" onclick="navigate('followups',this)">
+      <span class="nav-icon">⏰</span> Follow-ups
+    </button>
+    <button class="nav-btn" onclick="navigate('settings',this)">
+      <span class="nav-icon">⚙️</span> Settings
+    </button>
+  </div>
+
+</div>
+
+<!-- ── Sync Modal ── -->
+<div class="modal-bg" id="sync-modal">
+  <div class="modal" style="width:560px">
+    <h3 style="display:flex;align-items:center;gap:8px">
+      <span id="sync-icon">🔄</span> Sync
+      <span id="sync-spinner" class="spinner" style="display:none"></span>
+    </h3>
+    <div id="sync-log" class="sync-log">Ready</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="sync-close" onclick="closeSyncModal()" disabled>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Feedback Modal ── -->
+<div class="modal-bg" id="feedback-modal">
+  <div class="modal">
+    <h3>Correct Classification</h3>
+    <input type="hidden" id="fb-email-id">
+    <p style="font-size:12px;color:var(--muted)" id="fb-subject"></p>
+    <label>Correct Priority</label>
+    <select id="fb-priority">
+      <option value="">-- no change --</option>
+      <option value="high">High</option><option value="medium">Medium</option>
+      <option value="low">Low</option><option value="ignore">Ignore</option>
+    </select>
+    <label>Correct Category</label>
+    <select id="fb-category">
+      <option value="">-- no change --</option>
+      <option value="action_required">action_required</option><option value="needs_reply">needs_reply</option>
+      <option value="fyi">fyi</option><option value="newsletter">newsletter</option>
+      <option value="notification">notification</option><option value="spam">spam</option>
+    </select>
+    <label>Note</label>
+    <textarea id="fb-note" placeholder="Optional note..."></textarea>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('feedback-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitFeedback()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Draft Modal ── -->
+<div class="modal-bg" id="draft-modal">
+  <div class="modal">
+    <h3>Draft Replies</h3>
+    <div id="draft-list"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('draft-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ================================================================
+// CONFIG
+// ================================================================
+const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
+const LAST_UPDATED = '04/02/2026 05:46 AM PDT';
+
+const CFG = {
+  authority:  'https://login.microsoftonline.com/consumers',
+  graphBase:  'https://graph.microsoft.com/v1.0',
+  scopes:     ['User.Read', 'Files.ReadWrite', 'Mail.ReadWrite'],
+  odFolder:   'EmailAssistant',
+  claudeApi:  'https://api.anthropic.com/v1/messages',
+  claudeModel:'claude-haiku-4-5-20251001',
+  fetchLimit: 50,
+  bodyTruncate: 400,
+  batchBudget: 3000,
+};
+
+// ================================================================
+// MSAL AUTH
+// ================================================================
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: MSAL_CLIENT_ID,
+    authority: CFG.authority,
+    redirectUri: window.location.origin + window.location.pathname,
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true },
+});
+
+async function initAuth() {
+  const redirectResult = await msalInstance.handleRedirectPromise();
+  if (redirectResult) return redirectResult.account;
+  const accounts = msalInstance.getAllAccounts();
+  return accounts.length ? accounts[0] : null;
+}
+
+async function signIn() {
+  try {
+    const useRedirect = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (useRedirect) {
+      await msalInstance.loginRedirect({ scopes: CFG.scopes });
+      return;
+    }
+    try {
+      const result = await msalInstance.loginPopup({ scopes: CFG.scopes });
+      state.account = result.account;
+      await onAuthenticated();
+    } catch (popupErr) {
+      if (/popup/i.test(popupErr.message || '')) {
+        await msalInstance.loginRedirect({ scopes: CFG.scopes });
+      } else throw popupErr;
+    }
+  } catch (e) {
+    showToast('Sign-in failed: ' + (e.message || e));
+  }
+}
+
+async function doSignOut() {
+  try { await msalInstance.logoutPopup({ account: state.account }); } catch {}
+  state.account = null;
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+async function getToken() {
+  const accounts = msalInstance.getAllAccounts();
+  if (!accounts.length) throw new Error('Not signed in');
+  try {
+    const r = await msalInstance.acquireTokenSilent({ scopes: CFG.scopes, account: accounts[0] });
+    return r.accessToken;
+  } catch {
+    if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      throw Object.assign(new Error('Session expired'), { needsLogin: true });
+    }
+    const r = await msalInstance.acquireTokenPopup({ scopes: CFG.scopes, account: accounts[0] });
+    return r.accessToken;
+  }
+}
+
+// ================================================================
+// ONEDRIVE STORAGE
+// ================================================================
+async function graphFetch(endpoint, method = 'GET', body = null) {
+  const token = await getToken();
+  const opts = {
+    method,
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+  };
+  if (body !== null) opts.body = JSON.stringify(body);
+  const res = await fetch(CFG.graphBase + endpoint, opts);
+  if (res.status === 404) return null;
+  if (res.status === 204) return null;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Graph error ' + res.status);
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
+}
+
+async function readOD(filename) {
+  try {
+    const data = await graphFetch(`/me/drive/root:/${CFG.odFolder}/${filename}:/content`);
+    if (!data) return null;
+    return typeof data === 'string' ? JSON.parse(data) : data;
+  } catch { return null; }
+}
+
+async function writeOD(filename, data) {
+  const token = await getToken();
+  const res = await fetch(
+    `${CFG.graphBase}/me/drive/root:/${CFG.odFolder}/${filename}:/content`,
+    { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(data, null, 2) }
+  );
+  if (!res.ok) throw new Error('OneDrive write error ' + res.status);
+}
+
+let _saveTimer = null;
+function debouncedSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    try {
+      await writeOD('data.json', state.data);
+      localStorage.setItem('ea_data', JSON.stringify(state.data));
+    } catch (e) { console.error('Save failed:', e); }
+  }, 1500);
+}
+
+// ================================================================
+// STATE
+// ================================================================
+const DEFAULT_DATA = {
+  emails: [],
+  tasks: [],
+  pendingReplies: [],
+  followUps: [],
+  contacts: [],
+  seenIds: [],
+  feedback: [],
+  lastSyncTime: null,
+};
+
+const state = {
+  account: null,
+  data: { ...DEFAULT_DATA },
+  settings: { apiKey: '' },
+  selected: new Set(),
+  filteredEmails: [],
+};
+
+async function loadData() {
+  const [data, settings] = await Promise.all([readOD('data.json'), readOD('settings.json')]);
+  state.data = data ? { ...DEFAULT_DATA, ...data } : { ...DEFAULT_DATA };
+  state.settings = settings || { apiKey: '' };
+  localStorage.setItem('ea_data', JSON.stringify(state.data));
+}
+
+function loadFromCache() {
+  try {
+    const cached = localStorage.getItem('ea_data');
+    if (cached) state.data = { ...DEFAULT_DATA, ...JSON.parse(cached) };
+  } catch {}
+}
+
+// ================================================================
+// AUTH FLOW
+// ================================================================
+async function onAuthenticated() {
+  document.getElementById('header-user').textContent = state.account?.username || '';
+  document.getElementById('settings-ms-acct').innerHTML = '<span class="status-dot dot-green"></span>' + esc(state.account?.username || '');
+
+  loadFromCache();
+  renderAll();
+
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+
+  try {
+    await loadData();
+    document.getElementById('settings-od-status').innerHTML = '<span class="status-dot dot-green"></span>Connected';
+  } catch (e) {
+    console.error('OneDrive load failed:', e);
+  }
+
+  if (state.settings.apiKey) {
+    document.getElementById('settings-api-key').value = state.settings.apiKey;
+  } else {
+    navigate('settings');
+    showToast('Add your Anthropic API key in Settings to get started.');
+  }
+  renderAll();
+}
+
+// ================================================================
+// GRAPH API — EMAIL OPERATIONS
+// ================================================================
+async function fetchEmails(limit = CFG.fetchLimit) {
+  const params = new URLSearchParams({
+    $top: limit,
+    $orderby: 'receivedDateTime desc',
+    $select: 'id,subject,from,receivedDateTime,bodyPreview,body,hasAttachments,conversationId,isRead,webLink',
+  });
+  const data = await graphFetch(`/me/messages?${params}`);
+  return (data?.value || []).map(parseMessage);
+}
+
+function parseMessage(msg) {
+  const sender = msg.from?.emailAddress || {};
+  const senderStr = `${sender.name || ''} <${sender.address || ''}>`.trim();
+  let body = msg.body?.content || '';
+  if (msg.body?.contentType === 'html') {
+    const div = document.createElement('div');
+    div.innerHTML = body;
+    body = div.textContent || div.innerText || '';
+  }
+  body = body.replace(/\s+/g, ' ').trim().slice(0, 2000);
+  return {
+    email_id: msg.id.slice(0, 16),
+    graph_id: msg.id,
+    from: senderStr,
+    subject: msg.subject || '(no subject)',
+    received_at: msg.receivedDateTime || '',
+    thread_id: msg.conversationId,
+    body: body,
+    body_preview: msg.bodyPreview || '',
+    has_attachments: msg.hasAttachments || false,
+    is_read: msg.isRead || false,
+    web_link: msg.webLink || '',
+  };
+}
+
+async function archiveEmails(graphIds) {
+  let archiveFolderId;
+  try {
+    const r = await graphFetch('/me/mailFolders/archive');
+    archiveFolderId = r?.id;
+  } catch {}
+  if (!archiveFolderId) {
+    const r2 = await graphFetch("/me/mailFolders?$filter=displayName eq 'Archive'");
+    archiveFolderId = r2?.value?.[0]?.id;
+  }
+  if (!archiveFolderId) throw new Error('Could not find Archive folder');
+
+  let ok = 0;
+  for (const gid of graphIds) {
+    try {
+      await graphFetch(`/me/messages/${gid}/move`, 'POST', { destinationId: archiveFolderId });
+      ok++;
+    } catch (e) {
+      if (e.message?.includes('404')) ok++; // already gone
+    }
+  }
+  return ok;
+}
+
+async function createReplyDraft(graphId, draftBody) {
+  const reply = await graphFetch(`/me/messages/${graphId}/createReply`, 'POST', {});
+  if (reply?.id) {
+    await graphFetch(`/me/messages/${reply.id}`, 'PATCH', { body: { contentType: 'Text', content: draftBody } });
+  }
+  return reply?.id;
+}
+
+// ================================================================
+// CLAUDE API
+// ================================================================
+async function callClaude(system, user, maxTokens = 4096) {
+  const res = await fetch(CFG.claudeApi, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.settings.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: CFG.claudeModel,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: user }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Claude API error ' + res.status);
+  }
+  const data = await res.json();
+  return data.content[0].text;
+}
+
+function parseClaudeJSON(text) {
+  let raw = text.trim();
+  if (raw.startsWith('```')) {
+    raw = raw.split('```', 2)[1];
+    if (raw.startsWith('json')) raw = raw.slice(4);
+    raw = raw.split('```')[0];
+  }
+  return JSON.parse(raw.trim());
+}
+
+// ================================================================
+// ANALYSIS LOGIC
+// ================================================================
+const SYSTEM_PROMPT = `You are an executive email assistant. Your job is to analyze email batches and extract structured information to help a busy professional manage their inbox efficiently.
+
+For each email, produce a JSON object matching this schema exactly:
+- email_id: the id provided
+- from: sender name and email
+- subject: email subject line
+- received_at: timestamp as provided
+- priority: "high" (requires action today), "medium" (needs attention this week), "low" (informational), or "ignore" (newsletters/notifications/spam)
+- category: one of "action_required", "needs_reply", "fyi", "newsletter", "notification", "spam"
+- summary: 1-2 sentences in plain English, focus on what matters
+- action_items: list of concrete tasks the user must do (empty list if none)
+- reply_needed: true if a human reply is expected or polite
+- reply_urgency: "today", "this_week", "whenever", or "none"
+- follow_up_date: ISO date if a deadline or date is mentioned, otherwise null
+- job_opportunity: true if this email relates to a job lead, recruiter, or career opportunity
+- key_people: list of important names/emails mentioned
+- sentiment: "positive", "neutral", "negative", or "urgent"
+
+Rules:
+- Be concise. Summaries must be 1-2 sentences maximum.
+- Do not invent information not present in the email.
+- Newsletters, automated notifications, and marketing emails are always "ignore" priority unless they contain a deadline or action item.
+- If an email is from a recruiter or mentions a job role, set job_opportunity to true.
+- Return a JSON array containing one object per email. No markdown, no explanation — raw JSON only.`;
+
+const JUNK_SENDERS = ['noreply@','no-reply@','donotreply@','notifications@','updates@','mailer@','billing@','invoices@','receipts@'];
+const JUNK_SUBJECTS = ['unsubscribe','newsletter','digest','weekly update','your receipt','order confirmation','shipping update'];
+
+function isJunk(email) {
+  const sender = email.from.toLowerCase();
+  const subject = email.subject.toLowerCase();
+  return JUNK_SENDERS.some(p => sender.includes(p)) || JUNK_SUBJECTS.some(p => subject.includes(p));
+}
+
+function slimEmail(email) {
+  let body = email.body || '';
+  if (body.length > CFG.bodyTruncate) body = body.slice(0, CFG.bodyTruncate) + '...';
+  return { email_id: email.email_id, from: email.from, subject: email.subject, received_at: email.received_at, body };
+}
+
+function chunkByTokens(emails, budget) {
+  const batches = []; let current = []; let size = 0;
+  for (const e of emails) {
+    const s = JSON.stringify(e).length / 4;
+    if (current.length && size + s > budget) { batches.push(current); current = []; size = 0; }
+    current.push(e); size += s;
+  }
+  if (current.length) batches.push(current);
+  return batches;
+}
+
+function extractTasks(results, emailsMap) {
+  const now = new Date().toISOString();
+  for (const r of results) {
+    const source = `${(r.subject || '').slice(0, 60)} | ${r.from || ''}`;
+    for (const item of (r.action_items || [])) {
+      if (!item.trim()) continue;
+      const exists = state.data.tasks.some(t => t.email_id === r.email_id && t.task === item);
+      if (!exists) {
+        state.data.tasks.push({ id: crypto.randomUUID(), email_id: r.email_id, source, task: item, status: 'open', due_date: r.follow_up_date || null, created_at: now });
+      }
+    }
+    if (r.reply_needed && r.reply_urgency !== 'none') {
+      const exists = state.data.pendingReplies.some(p => p.email_id === r.email_id);
+      if (!exists) {
+        state.data.pendingReplies.push({ id: crypto.randomUUID(), email_id: r.email_id, from: r.from, subject: r.subject, received_at: r.received_at, urgency: r.reply_urgency || 'whenever', status: 'pending' });
+      }
+    }
+    if (r.follow_up_date) {
+      const exists = state.data.followUps.some(f => f.email_id === r.email_id);
+      if (!exists) {
+        state.data.followUps.push({ id: crypto.randomUUID(), email_id: r.email_id, from: r.from, subject: r.subject, follow_up_date: r.follow_up_date, status: 'open' });
+      }
+    }
+  }
+}
+
+// ================================================================
+// SYNC PIPELINE
+// ================================================================
+let _syncing = false;
+
+async function runSync() {
+  if (_syncing) return;
+  if (!state.settings.apiKey) { navigate('settings'); showToast('Set your API key first.'); return; }
+  _syncing = true;
+
+  document.getElementById('sync-modal').classList.add('open');
+  document.getElementById('sync-spinner').style.display = 'inline-block';
+  document.getElementById('sync-close').disabled = true;
+  document.getElementById('sync-icon').textContent = '🔄';
+  const log = document.getElementById('sync-log');
+  log.textContent = '';
+
+  function slog(msg) { log.textContent += msg + '\n'; log.scrollTop = log.scrollHeight; }
+
+  try {
+    slog('Step 1 — Fetching emails from Outlook...');
+    const fetched = await fetchEmails();
+    slog(`  → ${fetched.length} emails fetched`);
+
+    slog('Step 2 — Deduplicating...');
+    const seenSet = new Set(state.data.seenIds);
+    const newEmails = fetched.filter(e => !seenSet.has(e.email_id));
+    slog(`  → ${newEmails.length} new, ${fetched.length - newEmails.length} already seen`);
+
+    if (!newEmails.length) { slog('\nNo new emails to analyze.'); return; }
+
+    for (const e of newEmails) state.data.seenIds.push(e.email_id);
+
+    slog('Step 3 — Analyzing with Claude...');
+    const junk = newEmails.filter(isJunk);
+    const toAnalyze = newEmails.filter(e => !isJunk(e)).map(slimEmail);
+    slog(`  → ${toAnalyze.length} to Claude, ${junk.length} pre-filtered`);
+
+    const emailsMap = {};
+    for (const e of newEmails) emailsMap[e.email_id] = e;
+
+    let results = [];
+    if (toAnalyze.length) {
+      const batches = chunkByTokens(toAnalyze, CFG.batchBudget);
+      for (let i = 0; i < batches.length; i++) {
+        slog(`  → Batch ${i + 1}/${batches.length}: ${batches[i].length} emails`);
+        try {
+          const raw = await callClaude(SYSTEM_PROMPT, 'Analyze these emails and return structured JSON:\n\n' + JSON.stringify(batches[i], null, 2));
+          results.push(...parseClaudeJSON(raw));
+        } catch (e) {
+          slog(`  ⚠ Batch ${i + 1} failed: ${e.message}`);
+        }
+      }
+    }
+
+    slog(`\nStep 4 — Storing results...`);
+    for (const r of results) {
+      const raw = emailsMap[r.email_id] || {};
+      r.graph_id = raw.graph_id || '';
+      r.web_link = raw.web_link || '';
+      r.analyzed_at = new Date().toISOString();
+      r.archived = false;
+      const idx = state.data.emails.findIndex(e => e.email_id === r.email_id);
+      if (idx >= 0) state.data.emails[idx] = r;
+      else state.data.emails.push(r);
+    }
+
+    for (const j of junk) {
+      if (!state.data.emails.some(e => e.email_id === j.email_id)) {
+        state.data.emails.push({
+          email_id: j.email_id, graph_id: j.graph_id, from: j.from, subject: j.subject,
+          received_at: j.received_at, priority: 'ignore', category: 'spam',
+          summary: 'Pre-filtered (junk sender/subject)', action_items: [],
+          reply_needed: false, reply_urgency: 'none', follow_up_date: null,
+          job_opportunity: false, key_people: [], sentiment: 'neutral',
+          web_link: j.web_link || '', analyzed_at: new Date().toISOString(), archived: false,
+        });
+      }
+    }
+
+    extractTasks(results, emailsMap);
+    state.data.lastSyncTime = new Date().toISOString();
+
+    slog('Step 5 — Saving to OneDrive...');
+    await writeOD('data.json', state.data);
+    localStorage.setItem('ea_data', JSON.stringify(state.data));
+
+    const high = results.filter(r => r.priority === 'high').length;
+    const med = results.filter(r => r.priority === 'medium').length;
+    const replies = results.filter(r => r.reply_needed).length;
+    slog(`\n✓ Done — ${results.length} analyzed, ${junk.length} filtered`);
+    slog(`  ${high} urgent · ${med} medium · ${replies} need reply`);
+
+  } catch (e) {
+    slog(`\n⚠ Error: ${e.message}`);
+  } finally {
+    _syncing = false;
+    document.getElementById('sync-spinner').style.display = 'none';
+    document.getElementById('sync-close').disabled = false;
+    document.getElementById('sync-icon').textContent = '✅';
+    renderAll();
+  }
+}
+
+function closeSyncModal() { document.getElementById('sync-modal').classList.remove('open'); }
+
+// ================================================================
+// UI RENDERING
+// ================================================================
+function renderAll() {
+  renderInbox();
+  renderTasks();
+  renderReplies();
+  renderFollowups();
+  document.getElementById('settings-email-count').textContent = state.data.emails.length;
+}
+
+function renderInbox() {
+  const active = state.data.emails.filter(e => !e.archived);
+  applyFilters(active);
+}
+
+function applyFilters(source) {
+  const emails = source || state.data.emails.filter(e => !e.archived);
+  const p = document.getElementById('filter-priority').value;
+  const c = document.getElementById('filter-category').value;
+  state.filteredEmails = emails.filter(e => {
+    if (p && e.priority !== p) return false;
+    if (c && e.category !== c) return false;
+    return true;
+  });
+  state.filteredEmails.sort((a, b) => {
+    const po = { high: 1, medium: 2, low: 3, ignore: 4 };
+    return (po[a.priority] || 5) - (po[b.priority] || 5) || (b.received_at || '').localeCompare(a.received_at || '');
+  });
+
+  const el = document.getElementById('email-list');
+  if (!state.filteredEmails.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div><div>No emails. Hit Sync to fetch your inbox.</div></div>';
+    return;
+  }
+  el.innerHTML = state.filteredEmails.map(emailRow).join('');
+}
+
+function emailRow(e) {
+  const dot = { high: 'dot-high', medium: 'dot-medium', low: 'dot-low' }[e.priority] || 'dot-ignore';
+  const date = e.received_at ? e.received_at.slice(0, 10) : '';
+  const jobTag = e.job_opportunity ? '<span class="tag tag-job">JOB</span>' : '';
+  const repTag = e.reply_needed ? '<span class="tag tag-reply">REPLY</span>' : '';
+  const catTag = `<span class="tag tag-cat">${esc(e.category || '')}</span>`;
+  const items = (e.action_items || []).map(i => `<div class="action-item">${esc(i)}</div>`).join('');
+  const link = e.web_link ? `<a class="btn btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none">Open in Outlook</a>` : '';
+
+  return `
+  <div class="card email-row${state.selected.has(e.email_id) ? ' selected' : ''}" id="row-${e.email_id}" onclick="toggleExpand('${e.email_id}')">
+    <input type="checkbox" onclick="event.stopPropagation()" onchange="toggleSelect('${e.email_id}',this)" ${state.selected.has(e.email_id) ? 'checked' : ''}>
+    <div class="priority-dot ${dot}"></div>
+    <div class="email-main">
+      <div class="email-header">
+        <span class="email-subject">${esc(e.subject)}</span>
+        <span class="email-from">${esc(e.from || '')}</span>
+        <span class="email-date">${date}</span>
+      </div>
+      <div class="email-summary">${esc(e.summary || '')}</div>
+      <div class="email-expand">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${catTag}${jobTag}${repTag}</div>
+        ${items}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          ${link}
+          <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openFeedback('${e.email_id}')">Feedback</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderTasks() {
+  const open = state.data.tasks.filter(t => t.status === 'open');
+  const el = document.getElementById('task-list');
+  if (!open.length) { el.innerHTML = '<div class="empty"><div class="icon">✅</div><div>No open tasks.</div></div>'; return; }
+  el.innerHTML = open.map(t => `
+    <div class="task-row" id="task-${t.id}">
+      <div style="flex:1">
+        <div class="task-text">${esc(t.task)}</div>
+        <div class="task-source">${esc(t.source || '')}</div>
+      </div>
+      ${t.due_date ? `<span style="font-size:11px;color:var(--muted)">${t.due_date.slice(0, 10)}</span>` : ''}
+      <button class="btn btn-green btn-sm" onclick="completeTask('${t.id}')">Done</button>
+    </div>`).join('');
+}
+
+function renderReplies() {
+  const pending = state.data.pendingReplies.filter(r => r.status === 'pending');
+  const el = document.getElementById('replies-list');
+  if (!pending.length) { el.innerHTML = '<div class="empty"><div class="icon">💬</div><div>No pending replies.</div></div>'; return; }
+  el.innerHTML = pending.map(r => {
+    const cls = r.urgency === 'today' ? 'urgency-today' : r.urgency === 'this_week' ? 'urgency-thisweek' : 'urgency-whenever';
+    const label = r.urgency === 'today' ? 'Today' : r.urgency === 'this_week' ? 'This week' : 'Whenever';
+    return `
+    <div class="reply-row">
+      <div style="flex:1">
+        <div style="font-weight:500">${esc(r.subject)}</div>
+        <div style="font-size:12px;color:var(--muted)">From: ${esc(r.from || '')}</div>
+      </div>
+      <span class="${cls}">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderFollowups() {
+  const open = state.data.followUps.filter(f => f.status === 'open');
+  const el = document.getElementById('followups-list');
+  if (!open.length) { el.innerHTML = '<div class="empty"><div class="icon">⏰</div><div>No open follow-ups.</div></div>'; return; }
+  el.innerHTML = open.map(f => `
+    <div class="followup-row">
+      <div style="flex:1">
+        <div style="font-weight:500">${esc(f.subject)}</div>
+        <div style="font-size:12px;color:var(--muted)">From: ${esc(f.from || '')} · Due: ${(f.follow_up_date || '').slice(0, 10)}</div>
+      </div>
+      <button class="btn btn-green btn-sm" onclick="completeFollowup('${f.id}')">Done</button>
+    </div>`).join('');
+}
+
+// ================================================================
+// INTERACTIONS
+// ================================================================
+function navigate(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name)?.classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else document.querySelectorAll('.nav-btn').forEach(b => { if (b.textContent.trim().toLowerCase().startsWith(name.slice(0, 4))) b.classList.add('active'); });
+}
+
+function toggleExpand(id) { document.getElementById('row-' + id)?.classList.toggle('open'); }
+
+function toggleSelect(emailId, cb) {
+  if (cb.checked) state.selected.add(emailId); else state.selected.delete(emailId);
+  document.getElementById('row-' + emailId)?.classList.toggle('selected', cb.checked);
+  updateToolbar();
+}
+
+function toggleSelectAll(cb) {
+  state.selected.clear();
+  if (cb.checked) state.filteredEmails.forEach(e => state.selected.add(e.email_id));
+  document.querySelectorAll('.email-row input[type=checkbox]').forEach(c => c.checked = cb.checked);
+  document.querySelectorAll('.email-row').forEach(r => r.classList.toggle('selected', cb.checked));
+  updateToolbar();
+}
+
+function updateToolbar() {
+  const n = state.selected.size;
+  document.getElementById('sel-count').textContent = n ? `${n} selected` : '';
+  document.getElementById('btn-archive').disabled = n === 0;
+  document.getElementById('btn-draft').disabled = n === 0;
+}
+
+async function archiveSelected() {
+  const toArchive = state.data.emails.filter(e => state.selected.has(e.email_id));
+  const graphIds = toArchive.map(e => e.graph_id).filter(Boolean);
+  if (!graphIds.length) { showToast('No archivable emails'); return; }
+
+  document.getElementById('btn-archive').disabled = true;
+  try {
+    const ok = await archiveEmails(graphIds);
+    toArchive.forEach(e => e.archived = true);
+    state.selected.clear();
+    debouncedSave();
+    renderInbox();
+    updateToolbar();
+    showToast(`Archived ${ok} email${ok > 1 ? 's' : ''}`);
+  } catch (e) {
+    showToast('Archive failed: ' + e.message);
+  }
+  document.getElementById('btn-archive').disabled = false;
+}
+
+async function draftSelected() {
+  const emailIds = [...state.selected];
+  if (!emailIds.length || !state.settings.apiKey) return;
+
+  document.getElementById('btn-draft').disabled = true;
+  const drafts = [];
+
+  const DRAFT_PROMPT = `You are drafting professional email replies on behalf of Ken.
+Guidelines:
+- Keep replies concise and to the point
+- Match the tone of the incoming email
+- Sign off as "Ken"
+- Do not invent facts or commitments
+- Body text only, no subject line, no preamble
+- Plain text, under 150 words`;
+
+  for (const eid of emailIds) {
+    const email = state.data.emails.find(e => e.email_id === eid);
+    if (!email) continue;
+    try {
+      const body = await callClaude(DRAFT_PROMPT,
+        `Draft a reply:\nFrom: ${email.from}\nSubject: ${email.subject}\nSummary: ${email.summary || ''}`, 300);
+      let outlookDraftId = null;
+      if (email.graph_id) {
+        try { outlookDraftId = await createReplyDraft(email.graph_id, body.trim()); } catch {}
+      }
+      drafts.push({ subject: email.subject, body: body.trim(), saved: !!outlookDraftId });
+    } catch (e) {
+      drafts.push({ subject: email.subject, body: 'Error: ' + e.message, saved: false });
+    }
+  }
+
+  document.getElementById('btn-draft').disabled = false;
+  showDraftModal(drafts);
+}
+
+function showDraftModal(drafts) {
+  document.getElementById('draft-list').innerHTML = drafts.map(d => `
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Re: ${esc(d.subject)}</div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;white-space:pre-wrap;line-height:1.5">${esc(d.body)}</div>
+      ${d.saved ? '<div style="font-size:11px;color:var(--green);margin-top:4px">✓ Saved to Outlook Drafts</div>' : '<div style="font-size:11px;color:var(--muted);margin-top:4px">⚠ Not saved to Outlook</div>'}
+    </div>`).join('<hr style="border-color:var(--border);margin:10px 0">');
+  document.getElementById('draft-modal').classList.add('open');
+}
+
+function completeTask(id) {
+  const t = state.data.tasks.find(t => t.id === id);
+  if (t) { t.status = 'done'; t.updated_at = new Date().toISOString(); }
+  debouncedSave();
+  renderTasks();
+  showToast('Task completed');
+}
+
+function completeFollowup(id) {
+  const f = state.data.followUps.find(f => f.id === id);
+  if (f) { f.status = 'done'; f.updated_at = new Date().toISOString(); }
+  debouncedSave();
+  renderFollowups();
+  showToast('Follow-up completed');
+}
+
+// ── Feedback ──
+function openFeedback(emailId) {
+  const e = state.data.emails.find(e => e.email_id === emailId);
+  if (!e) return;
+  document.getElementById('fb-email-id').value = emailId;
+  document.getElementById('fb-subject').textContent = e.subject;
+  document.getElementById('fb-priority').value = '';
+  document.getElementById('fb-category').value = '';
+  document.getElementById('fb-note').value = '';
+  document.getElementById('feedback-modal').classList.add('open');
+}
+
+function submitFeedback() {
+  const emailId = document.getElementById('fb-email-id').value;
+  const email = state.data.emails.find(e => e.email_id === emailId);
+  if (!email) return;
+  const cp = document.getElementById('fb-priority').value;
+  const cc = document.getElementById('fb-category').value;
+  if (cp) email.priority = cp;
+  if (cc) email.category = cc;
+  state.data.feedback.push({
+    email_id: emailId, subject: email.subject, from: email.from,
+    correct_priority: cp, correct_category: cc,
+    note: document.getElementById('fb-note').value,
+    created_at: new Date().toISOString(),
+  });
+  debouncedSave();
+  renderInbox();
+  closeModal('feedback-modal');
+  showToast('Feedback saved');
+}
+
+// ── Settings ──
+async function saveSettings() {
+  state.settings.apiKey = document.getElementById('settings-api-key').value.trim();
+  try {
+    await writeOD('settings.json', state.settings);
+    showToast('Settings saved');
+  } catch (e) {
+    showToast('Save failed: ' + e.message);
+  }
+}
+
+// ── Modals ──
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
+});
+
+// ── Toast ──
+let _toastTimer;
+function showToast(msg, dur = 3500) {
+  clearTimeout(_toastTimer);
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  _toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Utils ──
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ================================================================
+// INIT
+// ================================================================
+(async function init() {
+  document.getElementById('last-updated').textContent = LAST_UPDATED;
+  try {
+    const account = await initAuth();
+    if (account) {
+      state.account = account;
+      await onAuthenticated();
+      return;
+    }
+  } finally {
+    document.querySelector('.btn-ms').disabled = false;
+  }
+})();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data === 'SW_UPDATED') location.reload();
+  });
+}
+</script>
+</body>
+</html>
