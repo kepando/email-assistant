@@ -48,7 +48,7 @@ def _ensure_schema():
     if not DB_PATH.exists():
         return
     conn = sqlite3.connect(DB_PATH)
-    for col in ("archived_at",):
+    for col in ("archived_at", "web_link"):
         if not _col_exists(conn, "analyzed_emails", col):
             try:
                 conn.execute(f"ALTER TABLE analyzed_emails ADD COLUMN {col} TEXT")
@@ -76,7 +76,7 @@ def api_emails():
         SELECT email_id, graph_id, from_addr, subject, received_at,
                priority, category, summary, action_items, reply_needed,
                reply_urgency, follow_up_date, job_opportunity, key_people,
-               sentiment, analyzed_at
+               sentiment, analyzed_at, web_link
         FROM analyzed_emails
         WHERE archived_at IS NULL
         ORDER BY

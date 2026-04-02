@@ -69,6 +69,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             job_opportunity INTEGER,
             key_people      TEXT,   -- JSON array
             sentiment       TEXT,
+            web_link        TEXT,
             analyzed_at     TEXT NOT NULL
         );
     """)
@@ -104,8 +105,8 @@ def store_results(conn: sqlite3.Connection, results: list[dict], emails_map: dic
             INSERT OR REPLACE INTO analyzed_emails
             (email_id, graph_id, from_addr, subject, received_at, priority, category,
              summary, action_items, reply_needed, reply_urgency, follow_up_date,
-             job_opportunity, key_people, sentiment, analyzed_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             job_opportunity, key_people, sentiment, web_link, analyzed_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             eid,
             raw.get("graph_id", ""),
@@ -122,6 +123,7 @@ def store_results(conn: sqlite3.Connection, results: list[dict], emails_map: dic
             1 if r.get("job_opportunity") else 0,
             json.dumps(r.get("key_people", [])),
             r.get("sentiment", ""),
+            raw.get("web_link", ""),
             now,
         ))
     conn.commit()
@@ -306,7 +308,7 @@ def post_to_notion(digest_name: str, run_dt: datetime,
 
 # ── Pipeline ─────────────────────────────────────────────────────────────────
 
-def run():
+def run(post_notion: bool = False):
     from ingest import fetch_emails
     from analyze import analyze_emails, print_summary
 
@@ -398,25 +400,29 @@ def run():
     print_dashboard(conn2)
     conn2.close()
 
-    # Step 6 — Post digest to Notion
-    print("Step 6 — Posting digest to Notion...")
-    digest_name = now.strftime("%m/%d, %H:%M, %A")   # e.g. "03/15, 08:05, Sunday"
-    stats = {
-        "total":          len(emails),
-        "new":            len(new_emails),
-        "already_seen":   already_seen,
-        "junk_filtered":  len(junk),
-        "high":           high,
-        "medium":         medium,
-        "replies":        replies,
-        "jobs":           jobs,
-    }
-    notion_url = post_to_notion(digest_name, now, results, junk, stats)
-    if notion_url:
-        print(f"  → Digest posted: {notion_url}\n")
+    # Step 6 — Post digest to Notion (opt-in via --notion flag)
+    if post_notion:
+        print("Step 6 — Posting digest to Notion...")
+        digest_name = now.strftime("%m/%d, %H:%M, %A")   # e.g. "03/15, 08:05, Sunday"
+        stats = {
+            "total":          len(emails),
+            "new":            len(new_emails),
+            "already_seen":   already_seen,
+            "junk_filtered":  len(junk),
+            "high":           high,
+            "medium":         medium,
+            "replies":        replies,
+            "jobs":           jobs,
+        }
+        notion_url = post_to_notion(digest_name, now, results, junk, stats)
+        if notion_url:
+            print(f"  → Digest posted: {notion_url}\n")
+        else:
+            print(f"  → Notion post failed or skipped.\n")
     else:
-        print(f"  → Notion post failed or skipped.\n")
+        print("\nStep 6 — Notion skipped (use --notion to post digest)\n")
 
 
 if __name__ == "__main__":
-    run()
+    import sys
+    run(post_notion="--notion" in sys.argv)

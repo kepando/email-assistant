@@ -391,6 +391,7 @@ function emailRow(e) {
         <div class="email-actions-row">${catTag}${jobTag}${repTag}</div>
         ${items}
         <div class="email-actions-row" style="margin-top:8px">
+          ${e.web_link ? `<a class="btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none;display:inline-block">Open in Outlook</a>` : ""}
           <button class="btn-secondary btn-sm" onclick="event.stopPropagation();openFeedbackModal('${e.email_id}','${esc(e.subject||"")}','${e.from_addr||""}','${e.priority||""}','${e.category||""}')">✏️ Feedback</button>
         </div>
       </div>

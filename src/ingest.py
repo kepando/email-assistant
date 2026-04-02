@@ -96,7 +96,7 @@ def fetch_messages(token: str, limit: int = FETCH_LIMIT) -> list[dict]:
     params = {
         "$top": limit,
         "$orderby": "receivedDateTime desc",
-        "$select": "id,subject,from,receivedDateTime,bodyPreview,body,hasAttachments,conversationId,isRead",
+        "$select": "id,subject,from,receivedDateTime,bodyPreview,body,hasAttachments,conversationId,isRead,webLink",
     }
 
     response = requests.get(GRAPH_ENDPOINT, headers=headers, params=params)
@@ -128,6 +128,7 @@ def parse_message(msg: dict) -> dict:
         "body_preview":    msg.get("bodyPreview", ""),
         "has_attachments": msg.get("hasAttachments", False),
         "is_read":         msg.get("isRead", False),
+        "web_link":        msg.get("webLink", ""),
     }
 
 
