@@ -100,7 +100,7 @@ input, select, textarea { font-family: inherit; }
 /* ── Bottom Nav ───────────────────────────────────────── */
 .bottom-nav {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
+  bottom: env(safe-area-inset-bottom, 0px);
   left: 16px; right: 16px;
   z-index: 100;
   background: var(--bg2);
@@ -381,6 +381,7 @@ input, select, textarea { font-family: inherit; }
         </div>
       </div>
       <button class="btn btn-primary" onclick="saveSettings()" style="margin-bottom:8px;width:100%">Save Settings</button>
+      <button class="btn btn-danger" onclick="if(confirm('Clear all data and re-sync?')) resetAndSync()" style="margin-bottom:8px;width:100%">Reset &amp; Sync</button>
       <button class="btn btn-secondary" onclick="doSignOut()" style="width:100%">Sign Out</button>
       <div style="text-align:center;font-size:11px;color:var(--muted);padding:16px 0 4px">
         Last updated: <span id="last-updated"></span>
@@ -471,7 +472,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/02/2026 06:39 AM PDT';
+const LAST_UPDATED = '04/02/2026 06:42 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -861,6 +862,16 @@ function extractTasks(results, emailsMap) {
 // SYNC PIPELINE
 // ================================================================
 let _syncing = false;
+
+async function resetAndSync() {
+  state.data.seenIds = [];
+  state.data.emails = [];
+  state.data.tasks = [];
+  state.data.pendingReplies = [];
+  state.data.feedback = [];
+  localStorage.removeItem('ea_data');
+  await runSync();
+}
 
 async function runSync() {
   if (_syncing) return;
