@@ -472,7 +472,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/02/2026 06:42 AM PDT';
+const LAST_UPDATED = '04/02/2026 06:45 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -608,6 +608,7 @@ const DEFAULT_DATA = {
   contacts: [],
   seenIds: [],
   feedback: [],
+  draftMemory: [],
   lastSyncTime: null,
 };
 
@@ -1164,14 +1165,8 @@ async function archiveSelected() {
   document.getElementById('btn-archive').disabled = false;
 }
 
-async function draftSelected() {
-  const emailIds = [...state.selected];
-  if (!emailIds.length || !state.settings.apiKey) return;
-
-  document.getElementById('btn-draft').disabled = true;
-  const drafts = [];
-
-  const DRAFT_PROMPT = `You are drafting professional email replies on behalf of Ken.
+function getDraftPrompt(senderEmail) {
+  const base = `You are drafting email replies on behalf of Ken.
 Guidelines:
 - Keep replies concise and to the point
 - Match the tone of the incoming email
@@ -1179,20 +1174,46 @@ Guidelines:
 - Do not invent facts or commitments
 - Body text only, no subject line, no preamble
 - Plain text, under 150 words`;
+  const memories = state.data.draftMemory.filter(m =>
+    !senderEmail || senderEmail.toLowerCase().includes(m.sender.toLowerCase())
+  );
+  if (!memories.length) return base;
+  return base + '\n\nContext from past feedback about this sender:\n' +
+    memories.map(m => `- ${m.note}`).join('\n');
+}
+
+function extractSenderEmail(from) {
+  const m = (from || '').match(/<([^>]+)>/);
+  return m ? m[1] : (from || '').trim();
+}
+
+async function generateDraft(email, extraInstruction) {
+  const sender = extractSenderEmail(email.from);
+  const prompt = getDraftPrompt(sender);
+  let userMsg = `Draft a reply:\nFrom: ${email.from}\nSubject: ${email.subject}\nSummary: ${email.summary || ''}`;
+  if (extraInstruction) userMsg += `\n\nAdditional instruction: ${extraInstruction}`;
+  return await callClaude(prompt, userMsg, 300);
+}
+
+async function draftSelected() {
+  const emailIds = [...state.selected];
+  if (!emailIds.length || !state.settings.apiKey) return;
+
+  document.getElementById('btn-draft').disabled = true;
+  const drafts = [];
 
   for (const eid of emailIds) {
     const email = state.data.emails.find(e => e.email_id === eid);
     if (!email) continue;
     try {
-      const body = await callClaude(DRAFT_PROMPT,
-        `Draft a reply:\nFrom: ${email.from}\nSubject: ${email.subject}\nSummary: ${email.summary || ''}`, 300);
+      const body = await generateDraft(email);
       let outlookDraftId = null;
       if (email.graph_id) {
         try { outlookDraftId = await createReplyDraft(email.graph_id, body.trim()); } catch {}
       }
-      drafts.push({ subject: email.subject, body: body.trim(), saved: !!outlookDraftId });
+      drafts.push({ emailId: eid, subject: email.subject, body: body.trim(), saved: !!outlookDraftId });
     } catch (e) {
-      drafts.push({ subject: email.subject, body: 'Error: ' + e.message, saved: false });
+      drafts.push({ emailId: eid, subject: email.subject, body: 'Error: ' + e.message, saved: false });
     }
   }
 
@@ -1201,13 +1222,52 @@ Guidelines:
 }
 
 function showDraftModal(drafts) {
-  document.getElementById('draft-list').innerHTML = drafts.map(d => `
-    <div style="margin-bottom:14px">
+  document.getElementById('draft-list').innerHTML = drafts.map((d, i) => `
+    <div style="margin-bottom:14px" id="draft-item-${i}">
       <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Re: ${esc(d.subject)}</div>
-      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;white-space:pre-wrap;line-height:1.5">${esc(d.body)}</div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;white-space:pre-wrap;line-height:1.5" id="draft-body-${i}">${esc(d.body)}</div>
       ${d.saved ? '<div style="font-size:11px;color:var(--green);margin-top:4px">✓ Saved to Outlook Drafts</div>' : '<div style="font-size:11px;color:var(--muted);margin-top:4px">⚠ Not saved to Outlook</div>'}
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" class="settings-input" style="flex:1;padding:8px;font-size:12px" id="draft-fb-${i}" placeholder="Feedback (e.g. 'too formal, this is my wife')">
+        <button class="btn btn-primary btn-sm" onclick="reviseDraft(${i},'${esc(d.emailId)}')">Revise</button>
+        <button class="btn btn-secondary btn-sm" onclick="saveDraftMemory(${i},'${esc(d.emailId)}')">Remember</button>
+      </div>
     </div>`).join('<hr style="border-color:var(--border);margin:10px 0">');
+  window._currentDrafts = drafts;
   document.getElementById('draft-modal').classList.add('open');
+}
+
+async function reviseDraft(idx, emailId) {
+  const fb = document.getElementById('draft-fb-' + idx).value.trim();
+  if (!fb) return;
+  const email = getEmailByEid(emailId);
+  if (!email) return;
+  const bodyEl = document.getElementById('draft-body-' + idx);
+  bodyEl.textContent = 'Revising...';
+  try {
+    const body = await generateDraft(email, fb);
+    bodyEl.textContent = body.trim();
+    if (window._currentDrafts[idx]) window._currentDrafts[idx].body = body.trim();
+  } catch (e) {
+    bodyEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+function saveDraftMemory(idx, emailId) {
+  const fb = document.getElementById('draft-fb-' + idx).value.trim();
+  if (!fb) { showToast('Enter feedback first'); return; }
+  const email = getEmailByEid(emailId);
+  if (!email) return;
+  const sender = extractSenderEmail(email.from);
+  state.data.draftMemory.push({
+    sender: sender,
+    from: email.from,
+    note: fb,
+    created_at: new Date().toISOString(),
+  });
+  debouncedSave();
+  showToast(`Remembered for ${sender}`);
+  document.getElementById('draft-fb-' + idx).value = '';
 }
 
 async function draftSingleReply(emailId) {
@@ -1216,21 +1276,12 @@ async function draftSingleReply(emailId) {
   if (!email) { showToast('Email not found'); return; }
   showToast('Drafting reply...');
   try {
-    const DRAFT_PROMPT = `You are drafting professional email replies on behalf of Ken.
-Guidelines:
-- Keep replies concise and to the point
-- Match the tone of the incoming email
-- Sign off as "Ken"
-- Do not invent facts or commitments
-- Body text only, no subject line, no preamble
-- Plain text, under 150 words`;
-    const body = await callClaude(DRAFT_PROMPT,
-      `Draft a reply:\nFrom: ${email.from}\nSubject: ${email.subject}\nSummary: ${email.summary || ''}`, 300);
+    const body = await generateDraft(email);
     let saved = false;
     if (email.graph_id) {
       try { await createReplyDraft(email.graph_id, body.trim()); saved = true; } catch {}
     }
-    showDraftModal([{ subject: email.subject, body: body.trim(), saved }]);
+    showDraftModal([{ emailId, subject: email.subject, body: body.trim(), saved }]);
   } catch (e) {
     showToast('Draft failed: ' + e.message);
   }
