@@ -471,7 +471,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/02/2026 06:32 AM PDT';
+const LAST_UPDATED = '04/02/2026 06:35 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1033,6 +1033,14 @@ function emailRow(e) {
   </div>`;
 }
 
+function getEmailByEid(emailId) { return state.data.emails.find(e => e.email_id === emailId); }
+
+function outlookLink(emailId) {
+  const e = getEmailByEid(emailId);
+  if (!e?.web_link) return '';
+  return `<a class="btn btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();openInOutlook(event,'${esc(e.graph_id || '')}','${esc(e.web_link)}')" style="text-decoration:none">Open in Outlook</a>`;
+}
+
 function renderTasks() {
   const open = state.data.tasks.filter(t => t.status === 'open');
   const el = document.getElementById('task-list');
@@ -1042,6 +1050,7 @@ function renderTasks() {
       <div style="flex:1">
         <div class="task-text">${esc(t.task)}</div>
         <div class="task-source">${esc(t.source || '')}</div>
+        <div style="display:flex;gap:6px;margin-top:6px">${outlookLink(t.email_id)}</div>
       </div>
       ${t.due_date ? `<span style="font-size:11px;color:var(--muted)">${t.due_date.slice(0, 10)}</span>` : ''}
       <button class="btn btn-green btn-sm" onclick="completeTask('${t.id}')">Done</button>
@@ -1056,12 +1065,16 @@ function renderReplies() {
     const cls = r.urgency === 'today' ? 'urgency-today' : r.urgency === 'this_week' ? 'urgency-thisweek' : 'urgency-whenever';
     const label = r.urgency === 'today' ? 'Today' : r.urgency === 'this_week' ? 'This week' : 'Whenever';
     return `
-    <div class="reply-row">
-      <div style="flex:1">
+    <div class="reply-row" style="flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
         <div style="font-weight:500">${esc(r.subject)}</div>
         <div style="font-size:12px;color:var(--muted)">From: ${esc(r.from || '')}</div>
       </div>
       <span class="${cls}">${label}</span>
+      <div style="width:100%;display:flex;gap:6px;margin-top:6px">
+        ${outlookLink(r.email_id)}
+        <button class="btn btn-green btn-sm" onclick="draftSingleReply('${r.email_id}')">Draft Reply</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1178,6 +1191,32 @@ function showDraftModal(drafts) {
       ${d.saved ? '<div style="font-size:11px;color:var(--green);margin-top:4px">✓ Saved to Outlook Drafts</div>' : '<div style="font-size:11px;color:var(--muted);margin-top:4px">⚠ Not saved to Outlook</div>'}
     </div>`).join('<hr style="border-color:var(--border);margin:10px 0">');
   document.getElementById('draft-modal').classList.add('open');
+}
+
+async function draftSingleReply(emailId) {
+  if (!state.settings.apiKey) { navigate('settings'); showToast('Set your API key first.'); return; }
+  const email = getEmailByEid(emailId);
+  if (!email) { showToast('Email not found'); return; }
+  showToast('Drafting reply...');
+  try {
+    const DRAFT_PROMPT = `You are drafting professional email replies on behalf of Ken.
+Guidelines:
+- Keep replies concise and to the point
+- Match the tone of the incoming email
+- Sign off as "Ken"
+- Do not invent facts or commitments
+- Body text only, no subject line, no preamble
+- Plain text, under 150 words`;
+    const body = await callClaude(DRAFT_PROMPT,
+      `Draft a reply:\nFrom: ${email.from}\nSubject: ${email.subject}\nSummary: ${email.summary || ''}`, 300);
+    let saved = false;
+    if (email.graph_id) {
+      try { await createReplyDraft(email.graph_id, body.trim()); saved = true; } catch {}
+    }
+    showDraftModal([{ subject: email.subject, body: body.trim(), saved }]);
+  } catch (e) {
+    showToast('Draft failed: ' + e.message);
+  }
 }
 
 function completeTask(id) {
