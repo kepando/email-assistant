@@ -482,7 +482,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/04/2026 07:20 AM PDT';
+const LAST_UPDATED = '04/04/2026 07:25 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -832,6 +832,28 @@ function slimEmail(email) {
   return { email_id: email.email_id, from: email.from, subject: email.subject, received_at: email.received_at, body };
 }
 
+function buildFeedbackContext(batch) {
+  if (!state.data.feedback.length) return '';
+  const senders = new Set(batch.map(e => extractSenderEmail(e.from).toLowerCase()));
+  const relevant = state.data.feedback.filter(fb => {
+    const fbSender = extractSenderEmail(fb.from).toLowerCase();
+    return senders.has(fbSender) || batch.some(e =>
+      e.subject?.toLowerCase().includes(fb.subject?.toLowerCase().slice(0, 20))
+    );
+  });
+  if (!relevant.length) return '';
+  const lines = relevant.slice(-15).map(fb => {
+    const parts = [];
+    if (fb.from) parts.push(`Sender: ${fb.from}`);
+    if (fb.subject) parts.push(`Subject: "${fb.subject}"`);
+    if (fb.correct_priority) parts.push(`Should be priority: ${fb.correct_priority}`);
+    if (fb.correct_category) parts.push(`Should be category: ${fb.correct_category}`);
+    if (fb.note) parts.push(`Note: ${fb.note}`);
+    return '- ' + parts.join(', ');
+  });
+  return '\n\nPast corrections from the user — apply these patterns to similar emails:\n' + lines.join('\n');
+}
+
 function chunkByTokens(emails, budget) {
   const batches = []; let current = []; let size = 0;
   for (const e of emails) {
@@ -926,7 +948,8 @@ async function runSync() {
       for (let i = 0; i < batches.length; i++) {
         slog(`  → Batch ${i + 1}/${batches.length}: ${batches[i].length} emails`);
         try {
-          const raw = await callClaude(SYSTEM_PROMPT, 'Analyze these emails and return structured JSON:\n\n' + JSON.stringify(batches[i], null, 2));
+          const fbContext = buildFeedbackContext(batches[i]);
+          const raw = await callClaude(SYSTEM_PROMPT + fbContext, 'Analyze these emails and return structured JSON:\n\n' + JSON.stringify(batches[i], null, 2));
           results.push(...parseClaudeJSON(raw));
         } catch (e) {
           slog(`  ⚠ Batch ${i + 1} failed: ${e.message}`);
