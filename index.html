@@ -92,7 +92,8 @@ input, select, textarea { font-family: inherit; }
 .main {
   padding-top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
   padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 32px);
-  min-height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 .view { display: none; padding: 12px 16px; }
 .view.active { display: block; }
@@ -481,7 +482,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/04/2026 07:16 AM PDT';
+const LAST_UPDATED = '04/04/2026 07:20 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
