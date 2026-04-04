@@ -474,6 +474,31 @@ input, select, textarea { font-family: inherit; }
   </div>
 </div>
 
+<!-- ── Job Log Modal ── -->
+<div class="modal-bg" id="joblog-modal">
+  <div class="modal">
+    <h3 style="color:#6ee7b7">Log to Job Scout</h3>
+    <input type="hidden" id="jl-email-id">
+    <label>Company</label>
+    <input type="text" class="settings-input" id="jl-company" placeholder="e.g. O'Reilly Auto Parts">
+    <label>Title</label>
+    <input type="text" class="settings-input" id="jl-title" placeholder="e.g. IT Support Analyst">
+    <label>Status</label>
+    <select id="jl-status" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px;font-size:13px">
+      <option value="applied">Applied</option>
+      <option value="acknowledged">Acknowledged</option>
+      <option value="interviewed">Interviewed</option>
+      <option value="offered">Offered</option>
+      <option value="denied">Denied</option>
+    </select>
+    <p id="jl-preview" style="font-size:12px;color:var(--muted);margin-top:12px"></p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('joblog-modal')">Cancel</button>
+      <button class="btn btn-green" onclick="submitJobLog()">Log</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -482,7 +507,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/04/2026 07:25 AM PDT';
+const LAST_UPDATED = '04/04/2026 07:39 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1073,6 +1098,7 @@ function emailRow(e) {
           ${link}
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();flagFollowUp('${e.email_id}')">Follow Up</button>
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openFeedback('${e.email_id}')">Feedback</button>
+          <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openJobLog('${e.email_id}')" style="background:#064e3b;color:#6ee7b7">Log to Job Scout</button>
         </div>
       </div>
     </div>
@@ -1385,6 +1411,74 @@ function submitFeedback() {
   renderInbox();
   closeModal('feedback-modal');
   showToast('Feedback saved');
+}
+
+// ── Job Scout Log ──
+function openJobLog(emailId) {
+  const e = getEmailByEid(emailId);
+  if (!e) return;
+  document.getElementById('jl-email-id').value = emailId;
+  // Try to extract company/title from subject or summary
+  const text = (e.subject || '') + ' ' + (e.summary || '');
+  const companyMatch = text.match(/(?:from|at|with)\s+([A-Z][A-Za-z0-9\s&'.]+?)(?:\s*[-–|,.]|\s+for\b)/);
+  document.getElementById('jl-company').value = companyMatch ? companyMatch[1].trim() : '';
+  const titleMatch = text.match(/(?:for|as|role|position)[:\s]+([A-Za-z0-9\s,/&]+?)(?:\s*[-–|.]|$)/i);
+  document.getElementById('jl-title').value = titleMatch ? titleMatch[1].trim().slice(0, 60) : '';
+  document.getElementById('jl-status').value = 'applied';
+  document.getElementById('jl-preview').textContent = `${e.subject} — ${e.from}`;
+  document.getElementById('joblog-modal').classList.add('open');
+}
+
+async function submitJobLog() {
+  const emailId = document.getElementById('jl-email-id').value;
+  const email = getEmailByEid(emailId);
+  if (!email) return;
+  const company = document.getElementById('jl-company').value.trim();
+  const title = document.getElementById('jl-title').value.trim();
+  const status = document.getElementById('jl-status').value;
+  if (!company) { showToast('Company is required'); return; }
+
+  // Read existing applications from JobScout folder
+  let apps = [];
+  try {
+    const data = await graphFetch('/me/drive/root:/JobScout/applications.json:/content');
+    if (data) apps = typeof data === 'string' ? JSON.parse(data) : data;
+    if (!Array.isArray(apps)) apps = [];
+  } catch {}
+
+  const now = new Date().toISOString();
+  const timestamps = { applied: null, acknowledged: null, interviewed: null, offered: null, denied: null };
+  timestamps[status] = now;
+
+  apps.push({
+    id: crypto.randomUUID(),
+    company,
+    title: title || 'Unknown',
+    status,
+    timestamps,
+    emails: [{
+      email_id: emailId,
+      subject: email.subject,
+      from: email.from,
+      received_at: email.received_at,
+      summary: email.summary || '',
+    }],
+    created_at: now,
+    updated_at: now,
+  });
+
+  try {
+    const token = await getToken();
+    const res = await fetch(
+      `${CFG.graphBase}/me/drive/root:/JobScout/applications.json:/content`,
+      { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(apps, null, 2) }
+    );
+    if (!res.ok) throw new Error('Write failed: ' + res.status);
+    closeModal('joblog-modal');
+    showToast(`Logged: ${company} — ${title}`);
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  }
 }
 
 // ── Settings ──
