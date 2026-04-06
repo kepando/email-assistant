@@ -514,7 +514,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/05/2026 11:03 PM PDT';
+const LAST_UPDATED = '04/06/2026 05:57 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1481,7 +1481,6 @@ async function openJobLog(emailId) {
   // Check for existing matching application
   await loadJobApps();
   const sender = extractSenderEmail(e.from);
-  const company = document.getElementById('jl-company').value;
   const match = findMatchingApp(company, sender);
   if (match) {
     document.getElementById('jl-match').style.display = 'block';
