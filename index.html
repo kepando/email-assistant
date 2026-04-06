@@ -514,7 +514,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/06/2026 05:57 AM PDT';
+const LAST_UPDATED = '04/06/2026 06:12 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1473,10 +1473,20 @@ async function openJobLog(emailId) {
   let title = '';
   for (const p of titlePatterns) { const m = summary.match(p); if (m) { title = m[1].trim().slice(0, 60); break; } }
   document.getElementById('jl-title').value = title;
-  document.getElementById('jl-status').value = 'applied';
   document.getElementById('jl-preview').textContent = `${e.subject} — ${e.from}`;
   document.getElementById('jl-match').style.display = 'none';
   document.getElementById('jl-match-id').value = '';
+
+  // Auto-detect status from email content
+  const deniedRe = /\b(unfortunately|not moving forward|not selected|regret to inform|decided not to proceed|will not be moving|no longer being considered|filled the position|gone with another|not be progressing)\b/i;
+  const offeredRe = /\b(pleased to offer|extend an offer|offer letter|congratulations.*offer)\b/i;
+  const interviewRe = /\b(schedule.{0,20}interview|invite you to interview|interview.{0,20}(slot|time|date|schedule))\b/i;
+  let detectedStatus = 'applied';
+  if (deniedRe.test(text)) detectedStatus = 'denied';
+  else if (offeredRe.test(text)) detectedStatus = 'offered';
+  else if (interviewRe.test(text)) detectedStatus = 'interviewed';
+  else if (/\b(received|acknowledged|confirmed|thank you for applying)\b/i.test(text)) detectedStatus = 'acknowledged';
+  document.getElementById('jl-status').value = detectedStatus;
 
   // Check for existing matching application
   await loadJobApps();
@@ -1499,10 +1509,12 @@ async function submitJobLog() {
   const company = document.getElementById('jl-company').value.trim();
   const title = document.getElementById('jl-title').value.trim();
   const status = document.getElementById('jl-status').value;
-  if (!company) { showToast('Company is required'); return; }
-
   const matchId = document.getElementById('jl-match-id').value;
   const updateExisting = document.getElementById('jl-update-existing')?.checked;
+
+  // Company only required for new entries
+  if (!company && !(matchId && updateExisting)) { showToast('Company is required'); return; }
+
   const now = new Date().toISOString();
   const emailEntry = {
     email_id: emailId,
@@ -1523,6 +1535,8 @@ async function submitJobLog() {
       if (!app.timestamps) app.timestamps = {};
       if (!app.timestamps[status]) app.timestamps[status] = now;
       app.status = status;
+      if (company) app.company = company;
+      if (title) app.title = title;
       app.updated_at = now;
     }
   } else {
@@ -1550,8 +1564,12 @@ async function submitJobLog() {
     if (!res.ok) throw new Error('Write failed: ' + res.status);
     _jobAppsCache = apps;
     closeModal('joblog-modal');
-    const action = matchId && updateExisting ? 'Updated' : 'Logged';
-    showToast(`${action}: ${company} — ${title || status}`);
+    if (matchId && updateExisting) {
+      const app = apps.find(a => a.id === matchId);
+      showToast(`Updated: ${app?.company || company} — ${status}`);
+    } else {
+      showToast(`Logged: ${company} — ${title || status}`);
+    }
   } catch (e) {
     showToast('Error: ' + e.message);
   }
