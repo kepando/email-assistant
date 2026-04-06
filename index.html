@@ -8,8 +8,8 @@
 <meta name="theme-color" content="#0f1117">
 <title>Email Assistant</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="static/icon-192.png">
-<link rel="apple-touch-icon" href="static/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="static/icon-192.png">
+<link rel="apple-touch-icon" href="static/apple-touch-icon.png">
 <script src="https://unpkg.com/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <style>
 /* ── Reset + Base ─────────────────────────────────────── */
@@ -286,7 +286,7 @@ input, select, textarea { font-family: inherit; }
 
 <!-- ── Login ── -->
 <div id="login-screen">
-  <div class="login-logo">📬</div>
+  <div class="login-logo"><img src="static/icon-192.png" alt="EA" style="width:80px;height:80px;border-radius:22px"></div>
   <div class="login-title">Email Assistant</div>
   <div class="login-sub">AI-powered email triage. Works on all your devices.</div>
   <button class="btn-ms" onclick="signIn()" disabled>
@@ -306,7 +306,7 @@ input, select, textarea { font-family: inherit; }
 
   <!-- Header -->
   <div class="header">
-    <div class="header-logo">📬 Email Assistant</div>
+    <div class="header-logo"><img src="static/icon-192.png" alt="" style="width:24px;height:24px;border-radius:6px"> Email Assistant</div>
     <div class="header-right">
       <span class="header-user" id="header-user"></span>
       <button class="btn btn-primary btn-sm" id="btn-sync" onclick="runSync()">Sync</button>
@@ -491,6 +491,13 @@ input, select, textarea { font-family: inherit; }
       <option value="offered">Offered</option>
       <option value="denied">Denied</option>
     </select>
+    <div id="jl-match" style="display:none;margin-top:12px;padding:10px;background:#064e3b;border:1px solid #065f46;border-radius:8px;font-size:12px;color:#6ee7b7">
+      <div id="jl-match-text"></div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;color:#6ee7b7;text-transform:none;letter-spacing:0;font-weight:500">
+        <input type="checkbox" id="jl-update-existing" checked style="accent-color:#10b981"> Update existing application
+      </label>
+    </div>
+    <input type="hidden" id="jl-match-id">
     <p id="jl-preview" style="font-size:12px;color:var(--muted);margin-top:12px"></p>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('joblog-modal')">Cancel</button>
@@ -507,7 +514,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/04/2026 07:39 AM PDT';
+const LAST_UPDATED = '04/04/2026 07:51 AM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1414,11 +1421,34 @@ function submitFeedback() {
 }
 
 // ── Job Scout Log ──
-function openJobLog(emailId) {
+let _jobAppsCache = [];
+
+async function loadJobApps() {
+  try {
+    const data = await graphFetch('/me/drive/root:/JobScout/applications.json:/content');
+    if (data) _jobAppsCache = typeof data === 'string' ? JSON.parse(data) : data;
+    if (!Array.isArray(_jobAppsCache)) _jobAppsCache = [];
+  } catch { _jobAppsCache = []; }
+}
+
+function findMatchingApp(company, senderEmail) {
+  if (!_jobAppsCache.length) return null;
+  const companyLower = company.toLowerCase();
+  const domain = (senderEmail || '').split('@')[1]?.toLowerCase() || '';
+  return _jobAppsCache.find(app => {
+    const appCompany = (app.company || '').toLowerCase();
+    // Match by company name (fuzzy substring match)
+    if (companyLower && appCompany && (appCompany.includes(companyLower) || companyLower.includes(appCompany))) return true;
+    // Match by sender domain against existing emails
+    if (domain && (app.emails || []).some(e => (e.from || '').toLowerCase().includes(domain))) return true;
+    return false;
+  });
+}
+
+async function openJobLog(emailId) {
   const e = getEmailByEid(emailId);
   if (!e) return;
   document.getElementById('jl-email-id').value = emailId;
-  // Try to extract company/title from subject or summary
   const text = (e.subject || '') + ' ' + (e.summary || '');
   const companyMatch = text.match(/(?:from|at|with)\s+([A-Z][A-Za-z0-9\s&'.]+?)(?:\s*[-–|,.]|\s+for\b)/);
   document.getElementById('jl-company').value = companyMatch ? companyMatch[1].trim() : '';
@@ -1426,6 +1456,21 @@ function openJobLog(emailId) {
   document.getElementById('jl-title').value = titleMatch ? titleMatch[1].trim().slice(0, 60) : '';
   document.getElementById('jl-status').value = 'applied';
   document.getElementById('jl-preview').textContent = `${e.subject} — ${e.from}`;
+  document.getElementById('jl-match').style.display = 'none';
+  document.getElementById('jl-match-id').value = '';
+
+  // Check for existing matching application
+  await loadJobApps();
+  const sender = extractSenderEmail(e.from);
+  const company = document.getElementById('jl-company').value;
+  const match = findMatchingApp(company, sender);
+  if (match) {
+    document.getElementById('jl-match').style.display = 'block';
+    document.getElementById('jl-match-text').textContent = `Found existing: ${match.company} — ${match.title} (${match.status})`;
+    document.getElementById('jl-match-id').value = match.id;
+    document.getElementById('jl-update-existing').checked = true;
+  }
+
   document.getElementById('joblog-modal').classList.add('open');
 }
 
@@ -1438,34 +1483,45 @@ async function submitJobLog() {
   const status = document.getElementById('jl-status').value;
   if (!company) { showToast('Company is required'); return; }
 
-  // Read existing applications from JobScout folder
-  let apps = [];
-  try {
-    const data = await graphFetch('/me/drive/root:/JobScout/applications.json:/content');
-    if (data) apps = typeof data === 'string' ? JSON.parse(data) : data;
-    if (!Array.isArray(apps)) apps = [];
-  } catch {}
-
+  const matchId = document.getElementById('jl-match-id').value;
+  const updateExisting = document.getElementById('jl-update-existing')?.checked;
   const now = new Date().toISOString();
-  const timestamps = { applied: null, acknowledged: null, interviewed: null, offered: null, denied: null };
-  timestamps[status] = now;
+  const emailEntry = {
+    email_id: emailId,
+    subject: email.subject,
+    from: email.from,
+    received_at: email.received_at,
+    summary: email.summary || '',
+  };
 
-  apps.push({
-    id: crypto.randomUUID(),
-    company,
-    title: title || 'Unknown',
-    status,
-    timestamps,
-    emails: [{
-      email_id: emailId,
-      subject: email.subject,
-      from: email.from,
-      received_at: email.received_at,
-      summary: email.summary || '',
-    }],
-    created_at: now,
-    updated_at: now,
-  });
+  let apps = _jobAppsCache;
+
+  if (matchId && updateExisting) {
+    // Update existing application
+    const app = apps.find(a => a.id === matchId);
+    if (app) {
+      if (!app.emails) app.emails = [];
+      if (!app.emails.some(e => e.email_id === emailId)) app.emails.push(emailEntry);
+      if (!app.timestamps) app.timestamps = {};
+      if (!app.timestamps[status]) app.timestamps[status] = now;
+      app.status = status;
+      app.updated_at = now;
+    }
+  } else {
+    // Create new application
+    const timestamps = { applied: null, acknowledged: null, interviewed: null, offered: null, denied: null };
+    timestamps[status] = now;
+    apps.push({
+      id: crypto.randomUUID(),
+      company,
+      title: title || 'Unknown',
+      status,
+      timestamps,
+      emails: [emailEntry],
+      created_at: now,
+      updated_at: now,
+    });
+  }
 
   try {
     const token = await getToken();
@@ -1474,8 +1530,10 @@ async function submitJobLog() {
       { method: 'PUT', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(apps, null, 2) }
     );
     if (!res.ok) throw new Error('Write failed: ' + res.status);
+    _jobAppsCache = apps;
     closeModal('joblog-modal');
-    showToast(`Logged: ${company} — ${title}`);
+    const action = matchId && updateExisting ? 'Updated' : 'Logged';
+    showToast(`${action}: ${company} — ${title || status}`);
   } catch (e) {
     showToast('Error: ' + e.message);
   }
