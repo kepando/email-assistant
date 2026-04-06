@@ -1,4 +1,4 @@
-const CACHE = 'email-assistant-v1';
+const CACHE = 'email-assistant-v2';
 const CACHE_URLS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
