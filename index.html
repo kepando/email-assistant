@@ -514,7 +514,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/05/2026 09:57 PM PDT';
+const LAST_UPDATED = '04/05/2026 10:45 PM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1449,11 +1449,30 @@ async function openJobLog(emailId) {
   const e = getEmailByEid(emailId);
   if (!e) return;
   document.getElementById('jl-email-id').value = emailId;
-  const text = (e.subject || '') + ' ' + (e.summary || '');
-  const companyMatch = text.match(/(?:from|at|with)\s+([A-Z][A-Za-z0-9\s&'.]+?)(?:\s*[-–|,.]|\s+for\b)/);
-  document.getElementById('jl-company').value = companyMatch ? companyMatch[1].trim() : '';
-  const titleMatch = text.match(/(?:for|as|role|position)[:\s]+([A-Za-z0-9\s,/&]+?)(?:\s*[-–|.]|$)/i);
-  document.getElementById('jl-title').value = titleMatch ? titleMatch[1].trim().slice(0, 60) : '';
+  const subject = e.subject || '';
+  const summary = e.summary || '';
+  const text = subject + ' ' + summary;
+
+  // Extract company
+  const companyPatterns = [
+    /applying to\s+(.+?)(?:\s*[.!]|$)/i,
+    /application (?:to|at|for|with)\s+(.+?)(?:\s*[.!]|$)/i,
+    /interest in (?:employment at|the .+? at)\s+(.+?)(?:\s*[.!]|$)/i,
+    /received your (?:resume|application).+?(?:at|for)\s+(.+?)(?:\s*[.!]|$)/i,
+    /(?:from|at|with)\s+([A-Z][A-Za-z0-9\s&'.]+?)(?:\s*[-–|,.]|\s+for\b)/,
+  ];
+  let company = '';
+  for (const p of companyPatterns) { const m = text.match(p); if (m) { company = m[1].trim(); break; } }
+  document.getElementById('jl-company').value = company;
+
+  // Extract title from summary
+  const titlePatterns = [
+    /(?:for the|for a|as a?)\s+(.+?)(?:\s+(?:role|position|at)\b|\s*[.!,]|$)/i,
+    /(?:role|position)[:\s]+(.+?)(?:\s*[-–|.,]|$)/i,
+  ];
+  let title = '';
+  for (const p of titlePatterns) { const m = summary.match(p); if (m) { title = m[1].trim().slice(0, 60); break; } }
+  document.getElementById('jl-title').value = title;
   document.getElementById('jl-status').value = 'applied';
   document.getElementById('jl-preview').textContent = `${e.subject} — ${e.from}`;
   document.getElementById('jl-match').style.display = 'none';
