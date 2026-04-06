@@ -514,7 +514,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/05/2026 09:51 PM PDT';
+const LAST_UPDATED = '04/05/2026 09:57 PM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -1085,7 +1085,7 @@ function emailRow(e) {
   const repTag = e.reply_needed ? '<span class="tag tag-reply">REPLY</span>' : '';
   const catTag = `<span class="tag tag-cat">${esc(e.category || '')}</span>`;
   const items = (e.action_items || []).map(i => `<div class="action-item">${esc(i)}</div>`).join('');
-  const link = e.web_link ? `<a class="btn btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();openInOutlook(event,'${esc(e.graph_id)}','${esc(e.web_link)}')" style="text-decoration:none">Open in Outlook</a>` : '';
+  const link = e.web_link ? `<a class="btn btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none">Open in Outlook</a>` : '';
 
   return `
   <div class="card email-row${state.selected.has(e.email_id) ? ' selected' : ''}" id="row-${e.email_id}" onclick="toggleExpand('${e.email_id}')">
@@ -1117,7 +1117,7 @@ function getEmailByEid(emailId) { return state.data.emails.find(e => e.email_id 
 function outlookLink(emailId) {
   const e = getEmailByEid(emailId);
   if (!e?.web_link) return '';
-  return `<a class="btn btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();openInOutlook(event,'${esc(e.graph_id || '')}','${esc(e.web_link)}')" style="text-decoration:none">Open in Outlook</a>`;
+  return `<a class="btn btn-secondary btn-sm" href="${esc(e.web_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none">Open in Outlook</a>`;
 }
 
 function renderTasks() {
@@ -1567,16 +1567,8 @@ function showToast(msg, dur = 3500) {
 }
 
 // ── Open in Outlook ──
-const _isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-function openInOutlook(e, graphId, webLink) {
-  if (_isMobile && graphId) {
-    e.preventDefault();
-    const appUrl = 'ms-outlook://emails/open?restid=' + encodeURIComponent(graphId);
-    const fallback = setTimeout(() => { window.open(webLink, '_blank'); }, 600);
-    window.location.href = appUrl;
-    window.addEventListener('blur', () => clearTimeout(fallback), { once: true });
-  }
-}
+// On all platforms, the <a href> opens the Outlook web link directly.
+// On iOS PWA this opens in an in-app browser (SFSafariViewController).
 
 // ── Utils ──
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
