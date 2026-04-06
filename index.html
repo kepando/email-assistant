@@ -514,7 +514,7 @@ input, select, textarea { font-family: inherit; }
 // CONFIG
 // ================================================================
 const MSAL_CLIENT_ID = '8ac7dc10-2ff7-4e29-aeeb-4402a2c404ee';
-const LAST_UPDATED = '04/04/2026 07:51 AM PDT';
+const LAST_UPDATED = '04/05/2026 09:51 PM PDT';
 
 const CFG = {
   authority:  'https://login.microsoftonline.com/consumers',
@@ -714,7 +714,7 @@ async function fetchEmails(limit = CFG.fetchLimit) {
     $orderby: 'receivedDateTime desc',
     $select: 'id,subject,from,receivedDateTime,bodyPreview,body,hasAttachments,conversationId,isRead,webLink',
   });
-  const data = await graphFetch(`/me/messages?${params}`);
+  const data = await graphFetch(`/me/mailFolders/inbox/messages?${params}`);
   return (data?.value || []).map(parseMessage);
 }
 
